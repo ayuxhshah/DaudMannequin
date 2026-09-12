@@ -2,10 +2,8 @@ import * as THREE from "three"
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js"
 
-const canvas = document.getElementById("heroCanvas")
-
 const renderer = new THREE.WebGLRenderer({
-  canvas,
+  canvas: document.getElementById("heroCanvas"),
   antialias: true,
   alpha: true
 })
@@ -13,7 +11,7 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2))
 renderer.setSize(window.innerWidth,window.innerHeight)
 renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1.05
+renderer.toneMappingExposure = 1
 renderer.setClearColor(0x000000,0)
 
 const scene = new THREE.Scene()
@@ -25,142 +23,126 @@ const camera = new THREE.PerspectiveCamera(
  100
 )
 
-camera.position.set(0,0,3)
+camera.position.z = 3
 
+// LIGHTS
+scene.add(new THREE.AmbientLight(0xffffff,.35))
 
-// ---------- LIGHTING ----------
-
-scene.add(new THREE.AmbientLight(0xffffff,0.35))
-
-const key = new THREE.DirectionalLight(0xffffff,2.8)
+const key = new THREE.DirectionalLight(0xffffff,2.5)
 key.position.set(5,5,5)
 scene.add(key)
 
-const warm = new THREE.DirectionalLight(0xffd3aa,1.1)
+const warm = new THREE.DirectionalLight(0xffd0a8,1.1)
 warm.position.set(-4,2,-2)
 scene.add(warm)
 
-const cool = new THREE.DirectionalLight(0x87a6ff,0.9)
-cool.position.set(0,-4,5)
-scene.add(cool)
+const fill = new THREE.DirectionalLight(0x88a6ff,.8)
+fill.position.set(0,-3,4)
+scene.add(fill)
 
-
-// ---------- HDR ----------
-
+// HDR
 new RGBELoader().load(
-  "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
-  (texture)=>{
-      texture.mapping = THREE.EquirectangularReflectionMapping
-      scene.environment = texture
-  }
+ "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
+ texture=>{
+  texture.mapping = THREE.EquirectangularReflectionMapping
+  scene.environment = texture
+ }
 )
 
-
-// ---------- MODEL ----------
-
-let model = null
+let model
 
 new GLTFLoader().load("./DaudMannequin3js.glb",(gltf)=>{
 
-    model = gltf.scene
+ model = gltf.scene
 
-    // Initial offsets (will tweak once we inspect model)
-    model.rotation.y = Math.PI
-    model.position.set(0,-0.65,0)
-    model.scale.setScalar(1.15)
+ // Initial pose
+ model.rotation.y = Math.PI
+ model.position.y = -0.55
+ model.scale.setScalar(1.15)
 
-    scene.add(model)
+ scene.add(model)
 
 })
 
-
-// ---------- TIMELINE ----------
-
-const sections = [
- {s:0,e:0.15,p:[0.4,-0.65],r:[0,0,0],cam:3,scale:1.15},
- {s:0.15,e:0.35,p:[1.1,-0.55],r:[0.25,0.9,0.1],cam:2.65,scale:1.25},
- {s:0.35,e:0.55,p:[-0.8,-0.45],r:[-0.15,2.2,-0.05],cam:2.4,scale:1.32},
- {s:0.55,e:0.70,p:[0,-0.55],r:[0,Math.PI,0],cam:3,scale:1.1},
- {s:0.70,e:0.85,p:[0.8,-0.7],r:[0.3,4.5,0.15],cam:2.15,scale:1.4},
- {s:0.85,e:1,p:[-0.7,-0.55],r:[-0.15,Math.PI*2,0.05],cam:2.8,scale:1.2},
+const poses = [
+ {s:0,e:.15,x:.35,y:-.55,rx:0,ry:0,rz:0,z:3,scale:1.15},
+ {s:.15,e:.35,x:1.1,y:-.45,rx:.2,ry:.8,rz:.08,z:2.6,scale:1.25},
+ {s:.35,e:.55,x:-.8,y:-.35,rx:-.1,ry:2.2,rz:-.05,z:2.35,scale:1.35},
+ {s:.55,e:.70,x:0,y:-.45,rx:0,ry:Math.PI,rz:0,z:3,scale:1.12},
+ {s:.70,e:.85,x:.8,y:-.6,rx:.3,ry:4.5,rz:.1,z:2.2,scale:1.45},
+ {s:.85,e:1,x:-.7,y:-.45,rx:-.15,ry:Math.PI*2,rz:.05,z:2.75,scale:1.2},
 ]
 
 const lerp=(a,b,t)=>a+(b-a)*t
 
-function smoothstep(a,b,t){
+const smooth=(a,b,t)=>{
  let x=Math.max(0,Math.min(1,(t-a)/(b-a)))
  return x*x*(3-2*x)
 }
 
-let targetScroll=0
-let scroll=0
+let target=0
+let current=0
 
-window.addEventListener("scroll",()=>{
-
- const h=document.documentElement.scrollHeight-window.innerHeight
- targetScroll = h>0 ? window.scrollY/h : 0
-
+window.addEventListener("message",(e)=>{
+ if(e.data.type==="scroll"){
+  target=e.data.progress
+ }
 })
 
-
-// ---------- ANIMATE ----------
+window.addEventListener("scroll",()=>{
+ const h=document.documentElement.scrollHeight-window.innerHeight
+ target=h>0?window.scrollY/h:0
+})
 
 function animate(){
 
  requestAnimationFrame(animate)
 
- scroll += (targetScroll-scroll)*0.06
+ current += (target-current)*.06
 
  if(model){
 
-   let current=sections[0]
-   let next=sections[1]
+   let p1=poses[0]
+   let p2=poses[1]
    let t=0
 
-   for(let i=0;i<sections.length;i++){
+   for(let i=0;i<poses.length;i++){
 
-      if(scroll>=sections[i].s && scroll<=sections[i].e){
-
-         current=sections[i]
-         next=sections[Math.min(i+1,sections.length-1)]
-         t=smoothstep(current.s,current.e,scroll)
-         break
+      if(current>=poses[i].s && current<=poses[i].e){
+          p1=poses[i]
+          p2=poses[Math.min(i+1,poses.length-1)]
+          t=smooth(p1.s,p1.e,current)
+          break
       }
 
    }
 
-   model.position.x = lerp(current.p[0],next.p[0],t)
-   model.position.y = lerp(current.p[1],next.p[1],t)
+   model.position.x = lerp(p1.x,p2.x,t)
+   model.position.y = lerp(p1.y,p2.y,t)
 
-   model.rotation.x = lerp(current.r[0],next.r[0],t)
+   model.rotation.x = lerp(p1.rx,p2.rx,t)
 
    model.rotation.y =
-      lerp(current.r[1],next.r[1],t)
+      lerp(p1.ry,p2.ry,t)
       + Math.sin(Date.now()*0.0003)*0.05
 
-   model.rotation.z = lerp(current.r[2],next.r[2],t)
+   model.rotation.z = lerp(p1.rz,p2.rz,t)
 
-   const s = lerp(current.scale,next.scale,t)
+   const s=lerp(p1.scale,p2.scale,t)
    model.scale.setScalar(s)
 
-   camera.position.z = lerp(current.cam,next.cam,t)
-
+   camera.position.z = lerp(p1.z,p2.z,t)
  }
 
  renderer.render(scene,camera)
-
 }
 
 animate()
 
-
-// ---------- RESIZE ----------
-
 window.addEventListener("resize",()=>{
 
- camera.aspect = window.innerWidth/window.innerHeight
+ camera.aspect=window.innerWidth/window.innerHeight
  camera.updateProjectionMatrix()
-
  renderer.setSize(window.innerWidth,window.innerHeight)
 
 })
