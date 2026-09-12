@@ -2,12 +2,9 @@ html,
 body {
   margin: 0;
   width: 100%;
+  height: 100%;
+  overflow: hidden;          /* iframe never scrolls */
   background: transparent;
-}
-
-/* This creates scroll space for testing */
-body {
-  height: 600vh;
 }
 
 #heroCanvas {
