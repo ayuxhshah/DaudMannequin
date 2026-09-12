@@ -80,20 +80,29 @@ const smooth=(a,b,t)=>{
  return x*x*(3-2*x)
 }
 
-let target=0
-let current=0
+// ---------- SCROLL STATE ----------
 
-window.addEventListener("message",(e)=>{
- if(e.data.type==="scroll"){
-  target=e.data.progress
- }
+let scrollProgress = 0
+let targetProgress = 0
+
+function updateScroll() {
+  const maxScroll =
+    document.documentElement.scrollHeight - window.innerHeight
+
+  targetProgress =
+    maxScroll <= 0 ? 0 : window.scrollY / maxScroll
+}
+
+updateScroll()
+
+window.addEventListener("scroll", updateScroll, { passive: true })
+
+// This is what Framer will use later.
+window.addEventListener("message", (e) => {
+  if (e.data.type === "scroll") {
+    targetProgress = e.data.progress
+  }
 })
-
-window.addEventListener("scroll",()=>{
- const h=document.documentElement.scrollHeight-window.innerHeight
- target=h>0?window.scrollY/h:0
-})
-
 function animate(){
 
  requestAnimationFrame(animate)
