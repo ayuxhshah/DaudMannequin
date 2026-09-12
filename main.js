@@ -2,156 +2,199 @@ import * as THREE from "three"
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js"
 
+// --------------------------------------------------
+// RENDERER
+// --------------------------------------------------
+
+const canvas = document.getElementById("heroCanvas")
+
 const renderer = new THREE.WebGLRenderer({
-  canvas: document.getElementById("heroCanvas"),
+  canvas,
   antialias: true,
-  alpha: true
+  alpha: true,
 })
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2))
-renderer.setSize(window.innerWidth,window.innerHeight)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setSize(window.innerWidth, window.innerHeight)
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 renderer.toneMappingExposure = 1
-renderer.setClearColor(0x000000,0)
+renderer.setClearColor(0x000000, 0)
+
+// --------------------------------------------------
+// SCENE + CAMERA
+// --------------------------------------------------
 
 const scene = new THREE.Scene()
 
 const camera = new THREE.PerspectiveCamera(
- 45,
- window.innerWidth/window.innerHeight,
- 0.1,
- 100
+  45,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
 )
 
-camera.position.z = 3
+camera.position.set(0, 0, 3)
 
-// LIGHTS
-scene.add(new THREE.AmbientLight(0xffffff,.35))
+// --------------------------------------------------
+// LIGHTING
+// --------------------------------------------------
 
-const key = new THREE.DirectionalLight(0xffffff,2.5)
-key.position.set(5,5,5)
+scene.add(new THREE.AmbientLight(0xffffff, 0.35))
+
+const key = new THREE.DirectionalLight(0xffffff, 2.6)
+key.position.set(5, 5, 5)
 scene.add(key)
 
-const warm = new THREE.DirectionalLight(0xffd0a8,1.1)
-warm.position.set(-4,2,-2)
+const warm = new THREE.DirectionalLight(0xffd0a8, 1.2)
+warm.position.set(-4, 2, -2)
 scene.add(warm)
 
-const fill = new THREE.DirectionalLight(0x88a6ff,.8)
-fill.position.set(0,-3,4)
-scene.add(fill)
+const cool = new THREE.DirectionalLight(0x88a6ff, 0.8)
+cool.position.set(0, -3, 4)
+scene.add(cool)
 
-// HDR
+// --------------------------------------------------
+// HDR ENVIRONMENT
+// --------------------------------------------------
+
 new RGBELoader().load(
- "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
- texture=>{
-  texture.mapping = THREE.EquirectangularReflectionMapping
-  scene.environment = texture
- }
+  "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
+  (texture) => {
+    texture.mapping = THREE.EquirectangularReflectionMapping
+    scene.environment = texture
+  }
 )
 
-let model
+// --------------------------------------------------
+// MODEL
+// --------------------------------------------------
 
-new GLTFLoader().load("./DaudMannequin3js.glb",(gltf)=>{
+let mannequin = null
 
- model = gltf.scene
+new GLTFLoader().load("./DaudMannequin3js.glb", (gltf) => {
+  mannequin = gltf.scene
 
- // Initial pose
- model.rotation.y = Math.PI
- model.position.y = -0.55
- model.scale.setScalar(1.15)
+  // Initial orientation (Blender export)
+  mannequin.rotation.y = Math.PI
 
- scene.add(model)
+  // Initial framing
+  mannequin.position.set(0, -0.55, 0)
 
+  mannequin.scale.setScalar(1.15)
+
+  scene.add(mannequin)
 })
 
+// --------------------------------------------------
+// POSES (same choreography as helmet demo)
+// --------------------------------------------------
+
 const poses = [
- {s:0,e:.15,x:.35,y:-.55,rx:0,ry:0,rz:0,z:3,scale:1.15},
- {s:.15,e:.35,x:1.1,y:-.45,rx:.2,ry:.8,rz:.08,z:2.6,scale:1.25},
- {s:.35,e:.55,x:-.8,y:-.35,rx:-.1,ry:2.2,rz:-.05,z:2.35,scale:1.35},
- {s:.55,e:.70,x:0,y:-.45,rx:0,ry:Math.PI,rz:0,z:3,scale:1.12},
- {s:.70,e:.85,x:.8,y:-.6,rx:.3,ry:4.5,rz:.1,z:2.2,scale:1.45},
- {s:.85,e:1,x:-.7,y:-.45,rx:-.15,ry:Math.PI*2,rz:.05,z:2.75,scale:1.2},
+  { start: 0.0, end: 0.15, x: 0.35, y: -0.55, rx: 0, ry: 0, rz: 0, cam: 3.0, scale: 1.15 },
+
+  { start: 0.15, end: 0.35, x: 1.15, y: -0.45, rx: 0.2, ry: 0.8, rz: 0.08, cam: 2.6, scale: 1.28 },
+
+  { start: 0.35, end: 0.55, x: -0.8, y: -0.35, rx: -0.12, ry: 2.2, rz: -0.05, cam: 2.35, scale: 1.36 },
+
+  { start: 0.55, end: 0.70, x: 0, y: -0.45, rx: 0, ry: Math.PI, rz: 0, cam: 3.0, scale: 1.1 },
+
+  { start: 0.70, end: 0.85, x: 0.8, y: -0.65, rx: 0.3, ry: 4.5, rz: 0.12, cam: 2.2, scale: 1.42 },
+
+  { start: 0.85, end: 1.0, x: -0.7, y: -0.45, rx: -0.15, ry: Math.PI * 2, rz: 0.05, cam: 2.75, scale: 1.2 },
 ]
 
-const lerp=(a,b,t)=>a+(b-a)*t
+// --------------------------------------------------
+// HELPERS
+// --------------------------------------------------
 
-const smooth=(a,b,t)=>{
- let x=Math.max(0,Math.min(1,(t-a)/(b-a)))
- return x*x*(3-2*x)
+const lerp = (a, b, t) => a + (b - a) * t
+
+const smoothstep = (a, b, t) => {
+  const x = Math.max(0, Math.min(1, (t - a) / (b - a)))
+  return x * x * (3 - 2 * x)
 }
 
-// ---------- SCROLL STATE ----------
+// --------------------------------------------------
+// SCROLL (BUTTERY SMOOTH)
+// --------------------------------------------------
 
-let scrollProgress = 0
-let targetProgress = 0
+let targetScroll = 0
+let smoothScroll = 0
 
 function updateScroll() {
   const maxScroll =
     document.documentElement.scrollHeight - window.innerHeight
 
-  targetProgress =
-    maxScroll <= 0 ? 0 : window.scrollY / maxScroll
+  targetScroll = maxScroll > 0 ? window.scrollY / maxScroll : 0
 }
 
 updateScroll()
 
-window.addEventListener("scroll", updateScroll, { passive: true })
-
-// This is what Framer will use later.
-window.addEventListener("message", (e) => {
-  if (e.data.type === "scroll") {
-    targetProgress = e.data.progress
-  }
+window.addEventListener("scroll", updateScroll, {
+  passive: true,
 })
-function animate(){
 
- requestAnimationFrame(animate)
+// --------------------------------------------------
+// ANIMATION LOOP
+// --------------------------------------------------
 
- current += (target-current)*.06
+const clock = new THREE.Clock()
 
- if(model){
+function animate() {
+  requestAnimationFrame(animate)
 
-   let p1=poses[0]
-   let p2=poses[1]
-   let t=0
+  const elapsed = clock.getElapsedTime()
 
-   for(let i=0;i<poses.length;i++){
+  // Same smoothing as Aethon demo
+  smoothScroll += (targetScroll - smoothScroll) * 0.06
 
-      if(current>=poses[i].s && current<=poses[i].e){
-          p1=poses[i]
-          p2=poses[Math.min(i+1,poses.length-1)]
-          t=smooth(p1.s,p1.e,current)
-          break
+  if (mannequin) {
+    let current = poses[0]
+    let next = poses[1]
+    let t = 0
+
+    for (let i = 0; i < poses.length; i++) {
+      if (
+        smoothScroll >= poses[i].start &&
+        smoothScroll <= poses[i].end
+      ) {
+        current = poses[i]
+        next = poses[Math.min(i + 1, poses.length - 1)]
+
+        t = smoothstep(current.start, current.end, smoothScroll)
+        break
       }
+    }
 
-   }
+    mannequin.position.x = lerp(current.x, next.x, t)
+    mannequin.position.y = lerp(current.y, next.y, t)
 
-   model.position.x = lerp(p1.x,p2.x,t)
-   model.position.y = lerp(p1.y,p2.y,t)
+    mannequin.rotation.x = lerp(current.rx, next.rx, t)
 
-   model.rotation.x = lerp(p1.rx,p2.rx,t)
+    mannequin.rotation.y =
+      lerp(current.ry, next.ry, t) +
+      Math.sin(elapsed * 0.6) * 0.05
 
-   model.rotation.y =
-      lerp(p1.ry,p2.ry,t)
-      + Math.sin(Date.now()*0.0003)*0.05
+    mannequin.rotation.z = lerp(current.rz, next.rz, t)
 
-   model.rotation.z = lerp(p1.rz,p2.rz,t)
+    const scale = lerp(current.scale, next.scale, t)
+    mannequin.scale.setScalar(scale)
 
-   const s=lerp(p1.scale,p2.scale,t)
-   model.scale.setScalar(s)
+    camera.position.z = lerp(current.cam, next.cam, t)
+  }
 
-   camera.position.z = lerp(p1.z,p2.z,t)
- }
-
- renderer.render(scene,camera)
+  renderer.render(scene, camera)
 }
 
 animate()
 
-window.addEventListener("resize",()=>{
+// --------------------------------------------------
+// RESIZE
+// --------------------------------------------------
 
- camera.aspect=window.innerWidth/window.innerHeight
- camera.updateProjectionMatrix()
- renderer.setSize(window.innerWidth,window.innerHeight)
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight
+  camera.updateProjectionMatrix()
 
+  renderer.setSize(window.innerWidth, window.innerHeight)
 })
