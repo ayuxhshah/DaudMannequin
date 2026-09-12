@@ -2,10 +2,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 
-// ------------------------------------------------------------
-// Renderer
-// ------------------------------------------------------------
-
 const canvas = document.getElementById("heroCanvas");
 
 const renderer = new THREE.WebGLRenderer({
@@ -16,13 +12,9 @@ const renderer = new THREE.WebGLRenderer({
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
-renderer.setClearColor(0x000000, 0);
-
-// ------------------------------------------------------------
-// Scene
-// ------------------------------------------------------------
 
 const scene = new THREE.Scene();
 
@@ -33,13 +25,9 @@ const camera = new THREE.PerspectiveCamera(
   100
 );
 
-// IMPORTANT — camera further back.
 camera.position.set(0, 0, 8);
 
-// ------------------------------------------------------------
-// Lighting
-// ------------------------------------------------------------
-
+// LIGHTS
 scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
 const key = new THREE.DirectionalLight(0xffffff, 2.5);
@@ -54,10 +42,6 @@ const fill = new THREE.DirectionalLight(0x88a6ff, 0.8);
 fill.position.set(0, -3, 4);
 scene.add(fill);
 
-// ------------------------------------------------------------
-// HDRI
-// ------------------------------------------------------------
-
 new RGBELoader().load(
   "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
   (texture) => {
@@ -66,32 +50,17 @@ new RGBELoader().load(
   }
 );
 
-// ------------------------------------------------------------
-// Model
-// ------------------------------------------------------------
-
 let model = null;
 
-new GLTFLoader().load("./DaudMannequin3js.glb", (gltf) => {
+new GLTFLoader().load("/DaudMannequin3js.glb", (gltf) => {
   model = gltf.scene;
 
-  // ONLY FIX: shrink the model.
   model.scale.setScalar(0.018);
-
-  // Face camera.
   model.rotation.y = Math.PI;
-
-  // Lower the body so torso sits in frame.
   model.position.set(0, -1.45, 0);
 
   scene.add(model);
-
-  console.log("Model loaded.");
 });
-
-// ------------------------------------------------------------
-// Helmet timeline
-// ------------------------------------------------------------
 
 const poses = [
   { s: 0, e: 0.15, x: 0.4, y: -1.45, rx: 0, ry: 0, rz: 0, cam: 8, scale: 0.018 },
@@ -104,32 +73,23 @@ const poses = [
 
 const lerp = THREE.MathUtils.lerp;
 
-const smoothstep = (a, b, t) => {
+function smoothstep(a, b, t) {
   const x = THREE.MathUtils.clamp((t - a) / (b - a), 0, 1);
   return x * x * (3 - 2 * x);
-};
+}
 
 // ------------------------------------------------------------
-// Scroll
+// THIS IS NOW DRIVEN BY FRAMER
 // ------------------------------------------------------------
 
 let targetScroll = 0;
 let smoothScroll = 0;
 
-function updateScroll() {
-  const max = document.documentElement.scrollHeight - window.innerHeight;
-  targetScroll = max > 0 ? window.scrollY / max : 0;
-}
-
-updateScroll();
-
-window.addEventListener("scroll", updateScroll, {
-  passive: true,
+window.addEventListener("message", (event) => {
+  if (event.data?.type === "scroll") {
+    targetScroll = THREE.MathUtils.clamp(event.data.progress, 0, 1);
+  }
 });
-
-// ------------------------------------------------------------
-// Animate
-// ------------------------------------------------------------
 
 const clock = new THREE.Clock();
 
@@ -138,7 +98,7 @@ function animate() {
 
   const elapsed = clock.getElapsedTime();
 
-  smoothScroll += (targetScroll - smoothScroll) * 0.06;
+  smoothScroll += (targetScroll - smoothScroll) * 0.08;
 
   if (model) {
     let current = poses[0];
@@ -167,8 +127,7 @@ function animate() {
 
     model.rotation.z = lerp(current.rz, next.rz, t);
 
-    const s = lerp(current.scale, next.scale, t);
-    model.scale.setScalar(s);
+    model.scale.setScalar(lerp(current.scale, next.scale, t));
 
     camera.position.z = lerp(current.cam, next.cam, t);
     camera.lookAt(0, 0, 0);
@@ -179,13 +138,8 @@ function animate() {
 
 animate();
 
-// ------------------------------------------------------------
-// Resize
-// ------------------------------------------------------------
-
 window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 });
