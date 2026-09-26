@@ -1,164 +1,219 @@
-import * as THREE from "three"
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-// =====================================================
+// -------------------------------------------------------
 // Renderer
-// =====================================================
-const canvas = document.getElementById("heroCanvas")
-
+// -------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: true,
-})
+  canvas: document.getElementById("heroCanvas"),
+  alpha: true,
+  antialias: true,
+});
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.outputColorSpace = THREE.SRGBColorSpace
-renderer.setClearColor(0xffffff, 0)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0xffffff, 0);
 
-// =====================================================
+// -------------------------------------------------------
 // Scene
-// =====================================================
-const scene = new THREE.Scene()
+// -------------------------------------------------------
+const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(
-    30,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    100
-)
+  32,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
+);
 
-camera.position.set(0, 0.1, 9)
+camera.position.set(0, 0.3, 8);
 
-// =====================================================
-// Lights
-// =====================================================
-scene.add(new THREE.AmbientLight(0xffffff, 1.1))
+// -------------------------------------------------------
+// Lighting (temporary V7 lighting)
+// -------------------------------------------------------
+scene.add(new THREE.AmbientLight(0xffffff, 1.0));
 
-const key = new THREE.DirectionalLight(0xffffff, 2.8)
-key.position.set(5, 5, 5)
-scene.add(key)
+const key = new THREE.DirectionalLight(0xffffff, 2.4);
+key.position.set(5, 6, 6);
+scene.add(key);
 
-const rim = new THREE.DirectionalLight(0xff8ad8, 1.2)
-rim.position.set(-5, 4, -4)
-scene.add(rim)
+const rim = new THREE.DirectionalLight(0xff8ad8, 1.2);
+rim.position.set(-5, 3, -5);
+scene.add(rim);
 
-const fill = new THREE.DirectionalLight(0x8ab8ff, 0.8)
-fill.position.set(0, -3, 4)
-scene.add(fill)
+const fill = new THREE.DirectionalLight(0x9cc0ff, 0.7);
+fill.position.set(0, -4, 5);
+scene.add(fill);
 
-// =====================================================
-// Model
-// =====================================================
-let hero = null
-let scrollTarget = 0
-let scroll = 0
+// -------------------------------------------------------
+// Hero Rig
+// -------------------------------------------------------
+const heroRig = new THREE.Group();
+scene.add(heroRig);
 
-new GLTFLoader().load(
-    "./DaudHero.glb",
-    (gltf) => {
-        hero = gltf.scene
+let hero;
+let scrollTarget = 0;
+let scroll = 0;
 
-        // Correct size for your exported Blender model.
-        hero.scale.setScalar(0.032)
+new GLTFLoader().load("./DaudHero.glb", (gltf) => {
+  hero = gltf.scene;
 
-        // Hero position.
-        hero.position.set(0, -2.2, 0)
+  // SCALE (final for your export)
+  hero.scale.setScalar(0.031);
 
-        // Face camera.
-        hero.rotation.set(0.05, Math.PI, 0)
+  // OFFSET INSIDE GROUP.
+  // This moves the character so HeroRig's origin behaves
+  // like it's inside the chest.
+  hero.position.set(0, -2.35, 0);
 
-        scene.add(hero)
+  // Face camera.
+  hero.rotation.y = Math.PI;
 
-        console.log("DAUD HERO LOADED")
-    },
-    undefined,
-    (e) => console.error(e)
-)
+  heroRig.add(hero);
 
-// =====================================================
-// Scroll bridge (Framer OR standalone)
-// =====================================================
+  console.log("Hero loaded.");
+});
+
+// -------------------------------------------------------
+// Scroll bridge
+// -------------------------------------------------------
 window.addEventListener("message", (event) => {
-    if (event.data?.type === "scroll") {
-        scrollTarget = THREE.MathUtils.clamp(event.data.progress, 0, 1)
-    }
-})
+  if (event.data?.type === "scroll") {
+    scrollTarget = THREE.MathUtils.clamp(event.data.progress, 0, 1);
+  }
+});
 
-// Standalone fallback for Vercel.
 window.addEventListener("scroll", () => {
-    const h = document.documentElement.scrollHeight - window.innerHeight
-    if (h > 0) scrollTarget = window.scrollY / h
-})
+  const max = document.documentElement.scrollHeight - window.innerHeight;
+  if (max > 0) scrollTarget = window.scrollY / max;
+});
 
-// =====================================================
+// -------------------------------------------------------
 // Timeline
-// =====================================================
+// -------------------------------------------------------
 const poses = [
-    { s:0.00,e:0.20,x:0.00,y:-2.20,rx:0.05,ry:Math.PI,rz:0.02,cam:9,scale:0.032 },
-    { s:0.20,e:0.40,x:1.00,y:-2.00,rx:0.18,ry:Math.PI+0.55,rz:0.08,cam:8.2,scale:0.033 },
-    { s:0.40,e:0.60,x:-0.90,y:-1.90,rx:-0.10,ry:Math.PI+1.9,rz:-0.05,cam:7.4,scale:0.034 },
-    { s:0.60,e:0.80,x:0.20,y:-2.10,rx:0.05,ry:Math.PI*2,rz:0.04,cam:8.4,scale:0.031 },
-    { s:0.80,e:1.00,x:-0.40,y:-2.05,rx:-0.12,ry:Math.PI*2.5,rz:0.05,cam:8.1,scale:0.033 },
-]
+  {
+    s: 0.0,
+    e: 0.18,
+    rotY: 0,
+    rotX: 0.04,
+    rotZ: 0.02,
+    camX: 0,
+    camY: 0.2,
+    camZ: 8,
+    lookY: -0.15,
+    scale: 1,
+  },
+  {
+    s: 0.18,
+    e: 0.35,
+    rotY: 0.7,
+    rotX: 0.16,
+    rotZ: 0.08,
+    camX: 0.8,
+    camY: 0.4,
+    camZ: 7.3,
+    lookY: -0.05,
+    scale: 1.05,
+  },
+  {
+    s: 0.35,
+    e: 0.55,
+    rotY: 2.2,
+    rotX: -0.08,
+    rotZ: -0.05,
+    camX: -0.7,
+    camY: 0.45,
+    camZ: 6.6,
+    lookY: 0.05,
+    scale: 1.08,
+  },
+  {
+    s: 0.55,
+    e: 0.75,
+    rotY: Math.PI,
+    rotX: 0.05,
+    rotZ: 0,
+    camX: 0,
+    camY: 0.25,
+    camZ: 7.4,
+    lookY: -0.1,
+    scale: 0.97,
+  },
+  {
+    s: 0.75,
+    e: 1.0,
+    rotY: Math.PI * 1.9,
+    rotX: 0.22,
+    rotZ: 0.08,
+    camX: 0.6,
+    camY: 0.15,
+    camZ: 6.8,
+    lookY: -0.15,
+    scale: 1.06,
+  },
+];
 
-function smooth(a, b, t) {
-    t = THREE.MathUtils.clamp((t - a) / (b - a), 0, 1)
-    return t * t * (3 - 2 * t)
+function smoothstep(a, b, x) {
+  const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
-const clock = new THREE.Clock()
+const clock = new THREE.Clock();
 
-// =====================================================
-// Animation loop
-// =====================================================
+// -------------------------------------------------------
+// Animation
+// -------------------------------------------------------
 function animate() {
-    requestAnimationFrame(animate)
+  requestAnimationFrame(animate);
 
-    scroll += (scrollTarget - scroll) * 0.08
+  scroll += (scrollTarget - scroll) * 0.08;
 
-    if (hero) {
-        let A = poses[0]
-        let B = poses[1]
-        let t = 0
+  if (hero) {
+    let A = poses[0];
+    let B = poses[1];
+    let t = 0;
 
-        for (let i = 0; i < poses.length - 1; i++) {
-            if (scroll >= poses[i].s && scroll <= poses[i].e) {
-                A = poses[i]
-                B = poses[i + 1]
-                t = smooth(A.s, A.e, scroll)
-                break
-            }
-        }
-
-        hero.position.x = THREE.MathUtils.lerp(A.x, B.x, t)
-        hero.position.y = THREE.MathUtils.lerp(A.y, B.y, t)
-
-        // Tiny idle motion.
-        hero.position.y += Math.sin(clock.getElapsedTime() * 1.2) * 0.015
-
-        hero.rotation.x = THREE.MathUtils.lerp(A.rx, B.rx, t)
-        hero.rotation.y = THREE.MathUtils.lerp(A.ry, B.ry, t)
-        hero.rotation.z = THREE.MathUtils.lerp(A.rz, B.rz, t)
-
-        const s = THREE.MathUtils.lerp(A.scale, B.scale, t)
-        hero.scale.setScalar(s)
-
-        camera.position.z = THREE.MathUtils.lerp(A.cam, B.cam, t)
-        camera.lookAt(0, -0.2, 0)
+    for (let i = 0; i < poses.length - 1; i++) {
+      if (scroll >= poses[i].s && scroll <= poses[i].e) {
+        A = poses[i];
+        B = poses[i + 1];
+        t = smoothstep(A.s, A.e, scroll);
+        break;
+      }
     }
 
-    renderer.render(scene, camera)
+    // ROTATE GROUP
+    heroRig.rotation.x = THREE.MathUtils.lerp(A.rotX, B.rotX, t);
+    heroRig.rotation.y = THREE.MathUtils.lerp(A.rotY, B.rotY, t);
+    heroRig.rotation.z = THREE.MathUtils.lerp(A.rotZ, B.rotZ, t);
+
+    // Tiny breathing motion.
+    heroRig.position.y = Math.sin(clock.getElapsedTime() * 1.4) * 0.02;
+
+    const scale = THREE.MathUtils.lerp(A.scale, B.scale, t);
+    heroRig.scale.setScalar(scale);
+
+    // CAMERA MOVEMENT (THIS IS THE MAGIC)
+    camera.position.x = THREE.MathUtils.lerp(A.camX, B.camX, t);
+    camera.position.y = THREE.MathUtils.lerp(A.camY, B.camY, t);
+    camera.position.z = THREE.MathUtils.lerp(A.camZ, B.camZ, t);
+
+    const lookY = THREE.MathUtils.lerp(A.lookY, B.lookY, t);
+    camera.lookAt(0, lookY, 0);
+  }
+
+  renderer.render(scene, camera);
 }
 
-animate()
+animate();
 
-// =====================================================
+// -------------------------------------------------------
 // Resize
-// =====================================================
+// -------------------------------------------------------
 window.addEventListener("resize", () => {
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    camera.aspect = window.innerWidth / window.innerHeight
-    camera.updateProjectionMatrix()
-})
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
