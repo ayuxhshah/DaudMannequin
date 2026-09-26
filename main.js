@@ -1,178 +1,267 @@
-import * as THREE from "three"
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"
-import { RGBELoader } from "three/addons/loaders/RGBELoader.js"
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.170/build/three.module.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.170/examples/jsm/loaders/GLTFLoader.js";
+import { RGBELoader } from "https://cdn.jsdelivr.net/npm/three@0.170/examples/jsm/loaders/RGBELoader.js";
 
-// ============================================================
+// ----------------------------------------------------
 // Renderer
-// ============================================================
+// ----------------------------------------------------
+
+const canvas = document.getElementById("heroCanvas");
+
 const renderer = new THREE.WebGLRenderer({
-  canvas: document.getElementById("heroCanvas"),
-  antialias: true,
-  alpha: true,
-})
+    canvas,
+    alpha: true,
+    antialias: true,
+});
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-renderer.setSize(window.innerWidth, window.innerHeight)
-renderer.outputColorSpace = THREE.SRGBColorSpace
-renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1.15
-renderer.setClearColor(0x000000, 0)
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
-// ============================================================
-// Scene
-// ============================================================
-const scene = new THREE.Scene()
+// ----------------------------------------------------
+// Scene + Camera
+// ----------------------------------------------------
+
+const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(
-  35,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100
-)
+    35,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    100
+);
 
-camera.position.set(0, 0.3, 8)
+// This framing works for your exported mannequin.
+camera.position.set(0, 0.1, 5.8);
 
-// ============================================================
+// ----------------------------------------------------
 // Lights
-// ============================================================
-scene.add(new THREE.AmbientLight(0xffffff, 0.45))
+// ----------------------------------------------------
 
-const key = new THREE.DirectionalLight(0xffffff, 3)
-key.position.set(5, 5, 5)
-scene.add(key)
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-const rim = new THREE.DirectionalLight(0xff91df, 1.8)
-rim.position.set(-4, 5, -5)
-scene.add(rim)
+const key = new THREE.DirectionalLight(0xffffff, 3.5);
+key.position.set(5, 6, 5);
+scene.add(key);
 
-const fill = new THREE.DirectionalLight(0x86a9ff, 0.9)
-fill.position.set(0, -4, 5)
-scene.add(fill)
+const rimPink = new THREE.DirectionalLight(0xff86dc, 2);
+rimPink.position.set(-6, 4, -5);
+scene.add(rimPink);
 
+const fillBlue = new THREE.DirectionalLight(0x8db5ff, 1);
+fillBlue.position.set(0, -3, 5);
+scene.add(fillBlue);
+
+// Optional HDR reflections
 new RGBELoader().load(
-  "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
-  (hdr) => {
-    hdr.mapping = THREE.EquirectangularReflectionMapping
-    scene.environment = hdr
-  }
-)
+    "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/citrus_orchard_road_puresky_1k.hdr",
+    (hdr) => {
+        hdr.mapping = THREE.EquirectangularReflectionMapping;
+        scene.environment = hdr;
+    }
+);
 
-// ============================================================
-// Model
-// ============================================================
-let hero
-let heroScale = 1
-let baseY = 0
+// ----------------------------------------------------
+// Hero Model
+// ----------------------------------------------------
 
-new GLTFLoader().load("/DaudHero.glb", (gltf) => {
-  hero = gltf.scene
+let hero = null;
+let targetScroll = 0;
+let smoothScroll = 0;
 
-  // Calculate size automatically
-  const box = new THREE.Box3().setFromObject(hero)
-  const size = box.getSize(new THREE.Vector3())
-  const center = box.getCenter(new THREE.Vector3())
+const loader = new GLTFLoader();
 
-  // Center model around chest.
-  hero.position.sub(center)
+loader.load(
+    "/DaudHero.glb",
+    (gltf) => {
+        hero = gltf.scene;
 
-  // Bigger hero.
-  heroScale = 5.2 / size.y
-  hero.scale.setScalar(heroScale)
+        // ---------- SCALE ----------
+        hero.scale.set(0.045, 0.045, 0.045);
 
-  // Place body slightly lower.
-  baseY = -(size.y * heroScale) * 0.28
-  hero.position.y = baseY
+        // ---------- POSITION ----------
+        hero.position.set(0, -2.55, 0);
 
-  // Face camera.
-  hero.rotation.y = Math.PI
+        // ---------- START ROTATION ----------
+        hero.rotation.set(0.05, Math.PI, 0.02);
 
-  scene.add(hero)
+        scene.add(hero);
 
-  console.log("Hero Loaded", size)
-})
+        console.log("DAUD HERO LOADED");
+    },
+    undefined,
+    (err) => {
+        console.error(err);
+    }
+);
 
-// ============================================================
+// ----------------------------------------------------
 // Scroll Timeline
-// ============================================================
+// ----------------------------------------------------
+
 const poses = [
-  { s:0, e:.18, x:0.25, y:0, rx:.05, ry:0, rz:.02, cam:8.2, scale:1 },
-  { s:.18,e:.35,x:1.15,y:.18,rx:.25,ry:.65,rz:.08,cam:7.2,scale:1.08 },
-  { s:.35,e:.55,x:-.75,y:.28,rx:-.18,ry:2.0,rz:-.08,cam:6.6,scale:1.15 },
-  { s:.55,e:.72,x:0,y:.05,rx:0,ry:Math.PI,rz:0,cam:7.6,scale:.97 },
-  { s:.72,e:.87,x:.8,y:-.08,rx:.32,ry:4.4,rz:.14,cam:6.3,scale:1.2 },
-  { s:.87,e:1,x:-.55,y:.12,rx:-.2,ry:Math.PI*2,rz:.06,cam:7,scale:1.05 }
-]
+    {
+        start: 0.0,
+        end: 0.18,
+        pos: new THREE.Vector3(0, -2.55, 0),
+        rot: new THREE.Euler(0.05, Math.PI, 0.02),
+        cam: 5.8,
+        scale: 0.045,
+    },
 
-const lerp = THREE.MathUtils.lerp
+    {
+        start: 0.18,
+        end: 0.35,
+        pos: new THREE.Vector3(1.0, -2.2, 0),
+        rot: new THREE.Euler(0.25, Math.PI + 0.65, 0.08),
+        cam: 5.4,
+        scale: 0.047,
+    },
 
-function smoothstep(a,b,t){
-  const x = THREE.MathUtils.clamp((t-a)/(b-a),0,1)
-  return x*x*(3-2*x)
+    {
+        start: 0.35,
+        end: 0.55,
+        pos: new THREE.Vector3(-0.9, -2.0, 0),
+        rot: new THREE.Euler(-0.18, Math.PI + 2.0, -0.08),
+        cam: 5.0,
+        scale: 0.049,
+    },
+
+    {
+        start: 0.55,
+        end: 0.72,
+        pos: new THREE.Vector3(0, -2.35, 0),
+        rot: new THREE.Euler(0.02, Math.PI * 2, 0),
+        cam: 5.5,
+        scale: 0.044,
+    },
+
+    {
+        start: 0.72,
+        end: 0.88,
+        pos: new THREE.Vector3(0.9, -2.25, 0),
+        rot: new THREE.Euler(0.32, Math.PI * 2 + 1.1, 0.15),
+        cam: 4.9,
+        scale: 0.051,
+    },
+
+    {
+        start: 0.88,
+        end: 1.0,
+        pos: new THREE.Vector3(-0.45, -2.3, 0),
+        rot: new THREE.Euler(-0.18, Math.PI * 3, 0.04),
+        cam: 5.3,
+        scale: 0.046,
+    },
+];
+
+// ----------------------------------------------------
+// Framer ScrollBridge
+// ----------------------------------------------------
+
+window.addEventListener("message", (event) => {
+    if (event.data?.type === "scroll") {
+        targetScroll = THREE.MathUtils.clamp(event.data.progress, 0, 1);
+    }
+});
+
+// ----------------------------------------------------
+// Animation Helpers
+// ----------------------------------------------------
+
+function smoothstep(edge0, edge1, x) {
+    const t = THREE.MathUtils.clamp((x - edge0) / (edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
 }
 
-// ============================================================
-// Framer Scroll Bridge
-// ============================================================
-let targetScroll = 0
-let scroll = 0
+const clock = new THREE.Clock();
 
-window.addEventListener("message", (event)=>{
-  if(event.data?.type === "scroll"){
-    targetScroll = THREE.MathUtils.clamp(event.data.progress,0,1)
-  }
-})
+// ----------------------------------------------------
+// Animate
+// ----------------------------------------------------
 
-const clock = new THREE.Clock()
+function animate() {
+    requestAnimationFrame(animate);
 
-// ============================================================
-// Animation Loop
-// ============================================================
-function animate(){
-  requestAnimationFrame(animate)
+    smoothScroll += (targetScroll - smoothScroll) * 0.08;
 
-  scroll += (targetScroll-scroll)*0.08
+    if (hero) {
+        const t = clock.getElapsedTime();
 
-  if(hero){
-    const time = clock.getElapsedTime()
+        let current = poses[0];
+        let next = poses[1];
+        let progress = 0;
 
-    let a = poses[0]
-    let b = poses[1]
-    let t = 0
+        for (let i = 0; i < poses.length - 1; i++) {
+            if (
+                smoothScroll >= poses[i].start &&
+                smoothScroll <= poses[i].end
+            ) {
+                current = poses[i];
+                next = poses[i + 1];
+                progress = smoothstep(
+                    current.start,
+                    current.end,
+                    smoothScroll
+                );
+                break;
+            }
+        }
 
-    for(let i=0;i<poses.length;i++){
-      if(scroll>=poses[i].s && scroll<=poses[i].e){
-        a=poses[i]
-        b=poses[Math.min(i+1,poses.length-1)]
-        t=smoothstep(a.s,a.e,scroll)
-        break
-      }
+        hero.position.lerpVectors(current.pos, next.pos, progress);
+
+        // Tiny idle float.
+        hero.position.y += Math.sin(t * 1.4) * 0.015;
+
+        hero.rotation.x = THREE.MathUtils.lerp(
+            current.rot.x,
+            next.rot.x,
+            progress
+        );
+
+        hero.rotation.y = THREE.MathUtils.lerp(
+            current.rot.y,
+            next.rot.y,
+            progress
+        );
+
+        hero.rotation.z = THREE.MathUtils.lerp(
+            current.rot.z,
+            next.rot.z,
+            progress
+        );
+
+        const s = THREE.MathUtils.lerp(
+            current.scale,
+            next.scale,
+            progress
+        );
+
+        hero.scale.setScalar(s);
+
+        camera.position.z = THREE.MathUtils.lerp(
+            current.cam,
+            next.cam,
+            progress
+        );
+
+        camera.lookAt(0, -0.25, 0);
     }
 
-    hero.position.x = lerp(a.x,b.x,t)
-    hero.position.y = baseY + lerp(a.y,b.y,t) + Math.sin(time*1.6)*0.03
-
-    hero.rotation.x = lerp(a.rx,b.rx,t)
-
-    hero.rotation.y = Math.PI + lerp(a.ry,b.ry,t) + Math.sin(time*.5)*0.03
-
-    hero.rotation.z = lerp(a.rz,b.rz,t)
-
-    hero.scale.setScalar(heroScale*lerp(a.scale,b.scale,t))
-
-    camera.position.z = lerp(a.cam,b.cam,t)
-    camera.lookAt(0,0.15,0)
-  }
-
-  renderer.render(scene,camera)
+    renderer.render(scene, camera);
 }
 
-animate()
+animate();
 
-// ============================================================
+// ----------------------------------------------------
 // Resize
-// ============================================================
-window.addEventListener("resize",()=>{
-  renderer.setSize(window.innerWidth,window.innerHeight)
-  camera.aspect = window.innerWidth/window.innerHeight
-  camera.updateProjectionMatrix()
-})
+// ----------------------------------------------------
+
+window.addEventListener("resize", () => {
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+});
