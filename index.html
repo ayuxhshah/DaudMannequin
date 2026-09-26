@@ -4,50 +4,48 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <title>Daud Mannequin</title>
-
-  <link rel="stylesheet" href="./style.css" />
+  <title>Daud Mannequin V7</title>
 
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.163/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/"
+      "three":"https://cdn.jsdelivr.net/npm/three@0.163/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/"
     }
   }
   </script>
 
   <style>
-    html,
-    body {
-      margin: 0;
-      background: transparent;
-      overflow-x: hidden;
+    html, body {
+      margin:0;
+      padding:0;
+      background:transparent;
+      overflow-x:hidden;
     }
 
-    canvas {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      pointer-events: none;
-      z-index: 1;
+    canvas{
+      position:fixed;
+      inset:0;
+      width:100vw;
+      height:100vh;
+      pointer-events:none;
+      z-index:0;
     }
 
-    /* Gives Vercel a scrollbar. Framer ignores this. */
-    #scroll-space {
-      height: 600vh;
-      width: 100%;
-      pointer-events: none;
+    #scroll-space{
+      width:100%;
+      height:600vh;
+      pointer-events:none;
     }
   </style>
 </head>
 
 <body>
-  <canvas id="heroCanvas"></canvas>
 
-  <div id="scroll-space"></div>
+<canvas id="heroCanvas"></canvas>
+<div id="scroll-space"></div>
 
-  <script type="module" src="./main.js"></script>
+<script type="module" src="./main.js"></script>
+
 </body>
-</html> 
+</html>
