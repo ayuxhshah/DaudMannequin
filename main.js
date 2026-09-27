@@ -3,15 +3,15 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({
-  canvas: document.getElementById("heroCanvas"),
+  canvas,
   alpha: true,
   antialias: true,
 });
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-renderer.setSize(window.innerWidth,window.innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.setClearColor(0xffffff,0);
+renderer.domElement.style.pointerEvents = "none";
+renderer.domElement.style.position = "fixed";
+renderer.domElement.style.inset = "0";
+renderer.domElement.style.zIndex = "0";
 
 // Scene
 const scene = new THREE.Scene();
