@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // =====================================================
-// MODEL SETTINGS
+// SETTINGS
 // =====================================================
 
 const MODEL_SCALE = 0.031;
@@ -12,16 +12,6 @@ const MODEL_POSITION = new THREE.Vector3(
   -2.35,
   0
 );
-
-const MODEL_ROTATION = new THREE.Euler(
-  0,
-  Math.PI,
-  0
-);
-
-// =====================================================
-// BLENDER CAMERA SETTINGS
-// =====================================================
 
 const CAMERA_FOCAL_LENGTH = 35;
 
@@ -139,9 +129,14 @@ new GLTFLoader().load(
   (gltf) => {
     hero = gltf.scene;
 
-    // -----------------------------------------------
-    // THE MANNEQUIN NEVER CHANGES DURING SCROLL
-    // -----------------------------------------------
+    // ---------------------------------------------------
+    // IMPORTANT:
+    //
+    // DO NOT ROTATE THE GLB.
+    //
+    // The exported GLB already has the Blender
+    // mannequin orientation.
+    // ---------------------------------------------------
 
     hero.scale.setScalar(
       MODEL_SCALE
@@ -151,9 +146,7 @@ new GLTFLoader().load(
       MODEL_POSITION
     );
 
-    hero.rotation.copy(
-      MODEL_ROTATION
-    );
+    // NO hero.rotation.y = Math.PI
 
     heroRig.add(hero);
   },
@@ -169,7 +162,16 @@ new GLTFLoader().load(
 );
 
 // =====================================================
-// SCROLL
+// SCROLL FROM FRAMER
+// =====================================================
+//
+// 0 = Camera 1
+// 1 = Camera 2
+// 2 = Camera 3
+// 3 = Camera 4
+// 4 = Camera 5
+// 5 = Camera 6
+// 6 = Camera 7
 // =====================================================
 
 let scrollTarget = 0;
@@ -194,40 +196,24 @@ window.addEventListener(
 );
 
 // =====================================================
-// BLENDER → THREE COORDINATE CONVERSION
+// BLENDER → THREE POSITION
 // =====================================================
 //
 // Blender:
-//
 // X = X
 // Y = depth
 // Z = up
 //
-// Three:
-//
+// Three / glTF:
 // X = X
 // Y = up
 // Z = depth
 //
-// Therefore:
+// Conversion:
 //
-// Three X = Blender X
-// Three Y = Blender Z
-// Three Z = -Blender Y
-//
-// IMPORTANT:
-//
-// We ONLY convert the camera's WORLD transform.
-//
-// We DO NOT apply the mannequin's:
-//
-// - scale
-// - position
-// - rotation
-//
-// to the camera.
-//
-// The camera and mannequin are independent.
+// X → X
+// Y → -Z
+// Z → Y
 // =====================================================
 
 function blenderPositionToThree(
@@ -243,7 +229,7 @@ function blenderPositionToThree(
 }
 
 // =====================================================
-// BLENDER CAMERA ROTATION
+// BLENDER CAMERA ROTATION → THREE
 // =====================================================
 
 function blenderRotationToThree(
@@ -280,7 +266,7 @@ function blenderRotationToThree(
   // Blender camera forward
   // ---------------------------------------------------
   //
-  // Blender camera looks down local -Z.
+  // Blender cameras look down -Z.
   // ---------------------------------------------------
 
   const blenderForward =
@@ -310,12 +296,9 @@ function blenderRotationToThree(
   );
 
   // ---------------------------------------------------
-  // CONVERT AXES ONLY
-  // ---------------------------------------------------
+  // AXIS CONVERSION ONLY
   //
-  // NO MODEL ROTATION HERE.
-  //
-  // This is the important fix.
+  // NO MANNEQUIN ROTATION.
   // ---------------------------------------------------
 
   const forward =
@@ -422,9 +405,9 @@ function createCameraState(
 
 const cameraStates = [
 
-  // ---------------------------------------------------
+  // ===================================================
   // 01 — HERO
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     -133.14,
@@ -436,9 +419,9 @@ const cameraStates = [
     -25.2
   ),
 
-  // ---------------------------------------------------
+  // ===================================================
   // 02 — SERVICE
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     -181.3,
@@ -450,9 +433,9 @@ const cameraStates = [
     -30.96
   ),
 
-  // ---------------------------------------------------
+  // ===================================================
   // 03 — ABOUT
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     122.61,
@@ -464,9 +447,9 @@ const cameraStates = [
     114.64
   ),
 
-  // ---------------------------------------------------
+  // ===================================================
   // 04 — PROJECT
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     -65.746,
@@ -478,9 +461,9 @@ const cameraStates = [
     -35.76
   ),
 
-  // ---------------------------------------------------
+  // ===================================================
   // 05 — TESTIMONIALS
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     167.75,
@@ -492,9 +475,9 @@ const cameraStates = [
     115.92
   ),
 
-  // ---------------------------------------------------
+  // ===================================================
   // 06 — FAQ
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     -39.796,
@@ -506,9 +489,9 @@ const cameraStates = [
     -37.36
   ),
 
-  // ---------------------------------------------------
+  // ===================================================
   // 07 — CONTACT
-  // ---------------------------------------------------
+  // ===================================================
 
   createCameraState(
     -133.14,
@@ -540,14 +523,14 @@ function ease(t) {
 }
 
 // =====================================================
-// FLOATING MANNEQUIN
+// MANNEQUIN FLOAT
 // =====================================================
 
 const clock =
   new THREE.Clock();
 
 // =====================================================
-// ANIMATION LOOP
+// ANIMATION
 // =====================================================
 
 function animate() {
@@ -567,7 +550,7 @@ function animate() {
     0.08;
 
   // ---------------------------------------------------
-  // CURRENT CAMERA
+  // CAMERA INDEX
   // ---------------------------------------------------
 
   const maxIndex =
@@ -593,7 +576,7 @@ function animate() {
     );
 
   // ---------------------------------------------------
-  // TRANSITION
+  // LOCAL TRANSITION
   // ---------------------------------------------------
 
   const rawLocal =
@@ -637,12 +620,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // MANNEQUIN FLOAT ONLY
-  // ---------------------------------------------------
-  //
-  // NO ROTATION.
-  //
-  // The mannequin remains fixed.
+  // MANNEQUIN FLOAT
   // ---------------------------------------------------
 
   if (hero) {
