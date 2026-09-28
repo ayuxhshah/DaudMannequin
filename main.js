@@ -1,12 +1,9 @@
 import * as THREE from "https://esm.sh/three@0.163.0";
 import { GLTFLoader } from "https://esm.sh/three@0.163.0/examples/jsm/loaders/GLTFLoader";
 
-//
-// -----------------------------------------------------
-// CANVAS + RENDERER
-// -----------------------------------------------------
-//
-
+// ------------------------------------------
+// Renderer
+// ------------------------------------------
 const canvas = document.getElementById("heroCanvas");
 
 const renderer = new THREE.WebGLRenderer({
@@ -17,17 +14,13 @@ const renderer = new THREE.WebGLRenderer({
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 
-//
-// -----------------------------------------------------
-// SCENE + CAMERA
-// -----------------------------------------------------
-//
-
+// ------------------------------------------
+// Scene
+// ------------------------------------------
 const scene = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(
@@ -36,14 +29,6 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   100
 );
-
-camera.position.set(0, 0.3, 8);
-
-//
-// -----------------------------------------------------
-// LIGHTS
-// -----------------------------------------------------
-//
 
 scene.add(new THREE.AmbientLight(0xffffff, 1));
 
@@ -55,98 +40,106 @@ const rimLight = new THREE.DirectionalLight(0xff8ad8, 1.2);
 rimLight.position.set(-5, 3, -5);
 scene.add(rimLight);
 
-//
-// -----------------------------------------------------
-// HERO RIG
-// -----------------------------------------------------
-//
-
+// ------------------------------------------
+// Hero
+// ------------------------------------------
 const heroRig = new THREE.Group();
 scene.add(heroRig);
 
 let hero = null;
 
-//
-// Scroll progress from Framer
-//
+new GLTFLoader().load("./DaudHero.glb", (gltf) => {
+  hero = gltf.scene;
 
-let scrollTarget = 0;
-let scroll = 0;
+  hero.scale.setScalar(0.031);
+  hero.position.set(0, -2.35, 0);
+  hero.rotation.y = Math.PI;
 
-//
-// -----------------------------------------------------
-// LOAD GLB
-// -----------------------------------------------------
-//
+  heroRig.add(hero);
 
-const loader = new GLTFLoader();
+  console.log("✅ GLB Loaded");
+});
 
-loader.load(
-  "./DaudHero.glb",
+// ------------------------------------------
+// Camera Timeline (7 Sections)
+// ------------------------------------------
 
-  (gltf) => {
-    hero = gltf.scene;
-
-    hero.scale.setScalar(0.031);
-    hero.position.set(0, -2.35, 0);
-    hero.rotation.y = Math.PI;
-
-    hero.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
-    });
-
-    heroRig.add(hero);
-
-    console.log("✅ GLB Loaded");
+const cameraStates = [
+  {
+    position: new THREE.Vector3(0, 0.3, 8),
+    target: new THREE.Vector3(0, -0.15, 0),
   },
+  {
+    position: new THREE.Vector3(0.9, -0.5, 6),
+    target: new THREE.Vector3(0, -1.4, 0),
+  },
+  {
+    position: new THREE.Vector3(-2.2, 0.3, 5.5),
+    target: new THREE.Vector3(0, -0.3, 0),
+  },
+  {
+    position: new THREE.Vector3(2.1, 0.8, 4.6),
+    target: new THREE.Vector3(0, 0.1, 0),
+  },
+  {
+    position: new THREE.Vector3(0, 1.6, 4),
+    target: new THREE.Vector3(0, 0.5, 0),
+  },
+  {
+    position: new THREE.Vector3(-1.2, 0.6, 5.3),
+    target: new THREE.Vector3(0, -0.4, 0),
+  },
+  {
+    position: new THREE.Vector3(0, 0.45, 3.9),
+    target: new THREE.Vector3(0, 0.2, 0),
+  },
+];
 
-  undefined,
+let activeSection = 0;
+let sectionProgress = 0;
 
-  (error) => {
-    console.error("❌ GLB failed to load", error);
-  }
-);
+const lookTarget = new THREE.Vector3();
 
-//
-// -----------------------------------------------------
-// RECEIVE SCROLL FROM FRAMER
-// -----------------------------------------------------
-//
+// ------------------------------------------
+// Listen for Framer
+// ------------------------------------------
 
 window.addEventListener("message", (event) => {
-  if (event.data?.type === "scroll") {
-    scrollTarget = THREE.MathUtils.clamp(event.data.progress, 0, 1);
+  if (event.origin !== "https://most-otter-554870.framer.app") return;
+
+  if (event.data?.type === "camera") {
+    activeSection = Math.max(
+      0,
+      Math.min(event.data.section, cameraStates.length - 1)
+    );
+
+    sectionProgress = THREE.MathUtils.clamp(event.data.progress, 0, 1);
   }
 });
 
-//
-// -----------------------------------------------------
-// ANIMATION LOOP
-// -----------------------------------------------------
-//
+// ------------------------------------------
+// Animation
+// ------------------------------------------
 
 const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
 
-  scroll += (scrollTarget - scroll) * 0.08;
+  const from = cameraStates[activeSection];
+  const to = cameraStates[Math.min(activeSection + 1, cameraStates.length - 1)];
+
+  camera.position.lerpVectors(from.position, to.position, sectionProgress);
+
+  lookTarget.lerpVectors(from.target, to.target, sectionProgress);
+
+  camera.lookAt(lookTarget);
 
   if (hero) {
-    const time = clock.getElapsedTime();
+    const t = clock.getElapsedTime();
 
-    // Scroll-driven rotation
-    heroRig.rotation.y = scroll * Math.PI * 2;
-    heroRig.rotation.x = Math.sin(scroll * Math.PI) * 0.15;
-    heroRig.rotation.z = Math.sin(scroll * Math.PI * 2) * 0.05;
-
-    // Floating idle motion
-    heroRig.position.y = Math.sin(time * 1.4) * 0.03;
-
-    camera.lookAt(0, -0.15, 0);
+    heroRig.position.y = Math.sin(t * 1.4) * 0.03;
+    heroRig.rotation.z = Math.sin(t * 0.8) * 0.015;
   }
 
   renderer.render(scene, camera);
@@ -154,15 +147,11 @@ function animate() {
 
 animate();
 
-//
-// -----------------------------------------------------
-// RESIZE
-// -----------------------------------------------------
-//
-
+// ------------------------------------------
+// Resize
+// ------------------------------------------
 window.addEventListener("resize", () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 });
