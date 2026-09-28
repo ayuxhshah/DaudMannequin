@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // =====================================================
-// SETTINGS
+// MODEL SETTINGS
 // =====================================================
 
 const MODEL_SCALE = 0.031;
@@ -13,24 +13,16 @@ const MODEL_POSITION = new THREE.Vector3(
   0
 );
 
-const MODEL_ROTATION = new THREE.Quaternion().setFromEuler(
-  new THREE.Euler(
-    0,
-    Math.PI,
-    0
-  )
+const MODEL_ROTATION = new THREE.Euler(
+  0,
+  Math.PI,
+  0
 );
 
-// This is the Armature origin from the Blender/GLB scene.
-// The mannequin is NOT located at Blender world origin.
-const BLENDER_MODEL_ORIGIN =
-  new THREE.Vector3(
-    -4.3,
-    119.581619,
-    36.920780
-  );
+// =====================================================
+// BLENDER CAMERA SETTINGS
+// =====================================================
 
-// Blender camera lens
 const CAMERA_FOCAL_LENGTH = 35;
 
 // =====================================================
@@ -87,7 +79,6 @@ const camera =
     1000
   );
 
-// Use the actual Blender 35mm focal length.
 camera.setFocalLength(
   CAMERA_FOCAL_LENGTH
 );
@@ -132,7 +123,7 @@ rim.position.set(
 scene.add(rim);
 
 // =====================================================
-// HERO MODEL
+// MANNEQUIN
 // =====================================================
 
 const heroRig =
@@ -148,6 +139,10 @@ new GLTFLoader().load(
   (gltf) => {
     hero = gltf.scene;
 
+    // -----------------------------------------------
+    // THE MANNEQUIN NEVER CHANGES DURING SCROLL
+    // -----------------------------------------------
+
     hero.scale.setScalar(
       MODEL_SCALE
     );
@@ -156,8 +151,9 @@ new GLTFLoader().load(
       MODEL_POSITION
     );
 
-    hero.rotation.y =
-      Math.PI;
+    hero.rotation.copy(
+      MODEL_ROTATION
+    );
 
     heroRig.add(hero);
   },
@@ -173,7 +169,7 @@ new GLTFLoader().load(
 );
 
 // =====================================================
-// SCROLL FROM FRAMER
+// SCROLL
 // =====================================================
 
 let scrollTarget = 0;
@@ -198,7 +194,7 @@ window.addEventListener(
 );
 
 // =====================================================
-// BLENDER → THREE POSITION
+// BLENDER → THREE COORDINATE CONVERSION
 // =====================================================
 //
 // Blender:
@@ -213,89 +209,51 @@ window.addEventListener(
 // Y = up
 // Z = depth
 //
-// So:
-// X → X
-// Y → -Z
-// Z → Y
+// Therefore:
+//
+// Three X = Blender X
+// Three Y = Blender Z
+// Three Z = -Blender Y
 //
 // IMPORTANT:
-// We first subtract the mannequin's actual
-// Armature origin.
 //
-// This is the piece we were missing.
+// We ONLY convert the camera's WORLD transform.
+//
+// We DO NOT apply the mannequin's:
+//
+// - scale
+// - position
+// - rotation
+//
+// to the camera.
+//
+// The camera and mannequin are independent.
 // =====================================================
 
-function blenderCameraPositionToThree(
+function blenderPositionToThree(
   x,
   y,
   z
 ) {
-  // Camera position in Blender world space
-  const cameraWorld =
-    new THREE.Vector3(
-      x,
-      y,
-      z
-    );
-
-  // -----------------------------------------------
-  // CAMERA RELATIVE TO MANNEQUIN
-  // -----------------------------------------------
-
-  cameraWorld.sub(
-    BLENDER_MODEL_ORIGIN
+  return new THREE.Vector3(
+    x * MODEL_SCALE,
+    z * MODEL_SCALE,
+    -y * MODEL_SCALE
   );
-
-  // -----------------------------------------------
-  // BLENDER → GLTF AXIS CONVERSION
-  // -----------------------------------------------
-
-  const converted =
-    new THREE.Vector3(
-      cameraWorld.x,
-      cameraWorld.z,
-      -cameraWorld.y
-    );
-
-  // -----------------------------------------------
-  // SAME SCALE AS THE MODEL
-  // -----------------------------------------------
-
-  converted.multiplyScalar(
-    MODEL_SCALE
-  );
-
-  // -----------------------------------------------
-  // SAME ROTATION AS THE MODEL
-  // -----------------------------------------------
-
-  converted.applyQuaternion(
-    MODEL_ROTATION
-  );
-
-  // -----------------------------------------------
-  // SAME POSITION AS THE MODEL
-  // -----------------------------------------------
-
-  converted.add(
-    MODEL_POSITION
-  );
-
-  return converted;
 }
 
 // =====================================================
-// BLENDER CAMERA ROTATION → THREE
+// BLENDER CAMERA ROTATION
 // =====================================================
 
-function blenderCameraRotationToThree(
+function blenderRotationToThree(
   rotationX,
   rotationY,
   rotationZ
 ) {
-  // -----------------------------------------------
-  // ORIGINAL BLENDER CAMERA ROTATION
-  // -----------------------------------------------
+  // ---------------------------------------------------
+  // Blender camera rotation
+  // ---------------------------------------------------
 
   const blenderEuler =
     new THREE.Euler(
@@ -318,11 +276,13 @@ function blenderCameraRotationToThree(
     blenderEuler
   );
 
-  // -----------------------------------------------
-  // GET CAMERA BASIS IN BLENDER
-  // -----------------------------------------------
+  // ---------------------------------------------------
+  // Blender camera forward
+  // ---------------------------------------------------
+  //
+  // Blender camera looks down local -Z.
+  // ---------------------------------------------------
 
-  // Blender camera looks down -Z.
   const blenderForward =
     new THREE.Vector3(
       0,
@@ -334,7 +294,10 @@ function blenderCameraRotationToThree(
     blenderQuaternion
   );
 
-  // Blender camera up is +Y.
+  // ---------------------------------------------------
+  // Blender camera up
+  // ---------------------------------------------------
+
   const blenderUp =
     new THREE.Vector3(
       0,
@@ -346,9 +309,14 @@ function blenderCameraRotationToThree(
     blenderQuaternion
   );
 
-  // -----------------------------------------------
-  // BLENDER → THREE AXIS CONVERSION
-  // -----------------------------------------------
+  // ---------------------------------------------------
+  // CONVERT AXES ONLY
+  // ---------------------------------------------------
+  //
+  // NO MODEL ROTATION HERE.
+  //
+  // This is the important fix.
+  // ---------------------------------------------------
 
   const forward =
     new THREE.Vector3(
@@ -364,24 +332,12 @@ function blenderCameraRotationToThree(
       -blenderUp.y
     );
 
-  // -----------------------------------------------
-  // SAME MODEL ROTATION
-  // -----------------------------------------------
-
-  forward.applyQuaternion(
-    MODEL_ROTATION
-  );
-
-  up.applyQuaternion(
-    MODEL_ROTATION
-  );
-
   forward.normalize();
   up.normalize();
 
-  // -----------------------------------------------
-  // BUILD THREE CAMERA BASIS
-  // -----------------------------------------------
+  // ---------------------------------------------------
+  // CAMERA BASIS
+  // ---------------------------------------------------
 
   const right =
     new THREE.Vector3();
@@ -403,7 +359,10 @@ function blenderCameraRotationToThree(
 
   correctedUp.normalize();
 
-  // Three camera looks down -Z.
+  // ---------------------------------------------------
+  // THREE CAMERA LOOKS DOWN -Z
+  // ---------------------------------------------------
+
   const backward =
     forward
       .clone()
@@ -429,7 +388,7 @@ function blenderCameraRotationToThree(
 }
 
 // =====================================================
-// CAMERA CREATOR
+// CAMERA STATE
 // =====================================================
 
 function createCameraState(
@@ -442,14 +401,14 @@ function createCameraState(
 ) {
   return {
     position:
-      blenderCameraPositionToThree(
+      blenderPositionToThree(
         x,
         y,
         z
       ),
 
     quaternion:
-      blenderCameraRotationToThree(
+      blenderRotationToThree(
         rotationX,
         rotationY,
         rotationZ
@@ -458,7 +417,7 @@ function createCameraState(
 }
 
 // =====================================================
-// 7 BLENDER CAMERAS
+// THE 7 BLENDER CAMERAS
 // =====================================================
 
 const cameraStates = [
@@ -581,14 +540,14 @@ function ease(t) {
 }
 
 // =====================================================
-// FLOAT
+// FLOATING MANNEQUIN
 // =====================================================
 
 const clock =
   new THREE.Clock();
 
 // =====================================================
-// ANIMATION
+// ANIMATION LOOP
 // =====================================================
 
 function animate() {
@@ -608,7 +567,7 @@ function animate() {
     0.08;
 
   // ---------------------------------------------------
-  // CAMERA INDEX
+  // CURRENT CAMERA
   // ---------------------------------------------------
 
   const maxIndex =
@@ -634,7 +593,7 @@ function animate() {
     );
 
   // ---------------------------------------------------
-  // TRANSITION PROGRESS
+  // TRANSITION
   // ---------------------------------------------------
 
   const rawLocal =
@@ -650,7 +609,7 @@ function animate() {
     cameraStates[next];
 
   // ---------------------------------------------------
-  // POSITION
+  // CAMERA POSITION
   // ---------------------------------------------------
 
   currentPosition.lerpVectors(
@@ -664,7 +623,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // ROTATION
+  // CAMERA ROTATION
   // ---------------------------------------------------
 
   currentQuaternion.slerpQuaternions(
@@ -678,7 +637,12 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // MANNEQUIN FLOAT
+  // MANNEQUIN FLOAT ONLY
+  // ---------------------------------------------------
+  //
+  // NO ROTATION.
+  //
+  // The mannequin remains fixed.
   // ---------------------------------------------------
 
   if (hero) {
