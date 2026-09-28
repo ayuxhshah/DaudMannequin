@@ -2,21 +2,6 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 // =====================================================
-// SETTINGS
-// =====================================================
-
-const MODEL_SCALE = 0.031;
-
-const MODEL_POSITION = new THREE.Vector3(
-  0,
-  -2.35,
-  0
-);
-
-const CAMERA_FOCAL_LENGTH = 35;
-const CAMERA_FILM_GAUGE = 36;
-
-// =====================================================
 // RENDERER
 // =====================================================
 
@@ -58,24 +43,24 @@ const scene =
   new THREE.Scene();
 
 // =====================================================
-// CAMERA
+// ACTIVE CAMERA
+// =====================================================
+//
+// IMPORTANT:
+//
+// We do NOT create a new PerspectiveCamera.
+//
+// Blender's actual camera is inside the GLB.
+//
+// GLTFLoader will reconstruct its exact:
+// - position
+// - rotation
+// - projection
+// - near/far
+//
 // =====================================================
 
-const camera =
-  new THREE.PerspectiveCamera(
-    40,
-    window.innerWidth /
-      window.innerHeight,
-    0.01,
-    1000
-  );
-
-camera.filmGauge =
-  CAMERA_FILM_GAUGE;
-
-camera.setFocalLength(
-  CAMERA_FOCAL_LENGTH
-);
+let camera = null;
 
 // =====================================================
 // LIGHTS
@@ -117,57 +102,148 @@ rim.position.set(
 scene.add(rim);
 
 // =====================================================
-// MANNEQUIN
+// LOAD BLENDER GLB
 // =====================================================
 
-const heroRig =
-  new THREE.Group();
+const loader =
+  new GLTFLoader();
 
-scene.add(heroRig);
-
-let hero = null;
-
-new GLTFLoader().load(
-  "./DaudHero.glb",
+loader.load(
+  "./DaudHeroWithCamera.glb",
 
   (gltf) => {
-    hero = gltf.scene;
 
-    // IMPORTANT:
-    // The mannequin itself is NOT rotated.
-    // The GLB already contains the correct orientation.
-
-    hero.scale.setScalar(
-      MODEL_SCALE
+    console.log(
+      "GLB loaded:",
+      gltf
     );
 
-    hero.position.copy(
-      MODEL_POSITION
+    // -------------------------------------------------
+    // ADD THE ENTIRE BLENDER SCENE
+    // -------------------------------------------------
+    //
+    // DO NOT scale it.
+    //
+    // DO NOT move it.
+    //
+    // DO NOT rotate it.
+    //
+    // The mannequin and camera were exported from
+    // the same Blender coordinate system.
+    //
+
+    scene.add(
+      gltf.scene
     );
 
-    heroRig.add(hero);
+    // -------------------------------------------------
+    // GET BLENDER CAMERA
+    // -------------------------------------------------
+
+    if (
+      gltf.cameras &&
+      gltf.cameras.length > 0
+    ) {
+
+      camera =
+        gltf.cameras[0];
+
+      console.log(
+        "Using Blender camera:",
+        camera
+      );
+
+      console.log(
+        "Camera position:",
+        camera.position
+      );
+
+      console.log(
+        "Camera quaternion:",
+        camera.quaternion
+      );
+
+      console.log(
+        "Camera FOV:",
+        camera.fov
+      );
+
+      // -------------------------------------------------
+      // ADD CAMERA TO THE THREE SCENE
+      // -------------------------------------------------
+
+      scene.add(
+        camera
+      );
+
+      // -------------------------------------------------
+      // MATCH CURRENT VIEWPORT
+      // -------------------------------------------------
+
+      camera.aspect =
+        window.innerWidth /
+        window.innerHeight;
+
+      camera.updateProjectionMatrix();
+
+    } else {
+
+      console.error(
+        "NO CAMERA FOUND IN GLB"
+      );
+
+    }
+
   },
 
-  undefined,
+  (progress) => {
+
+    if (
+      progress.total > 0
+    ) {
+
+      console.log(
+        "Loading:",
+        (
+          progress.loaded /
+          progress.total *
+          100
+        ).toFixed(1) + "%"
+      );
+
+    }
+
+  },
 
   (error) => {
+
     console.error(
-      "Failed to load DaudHero.glb:",
+      "Failed to load DaudHeroWithCamera.glb:",
       error
     );
+
   }
 );
 
 // =====================================================
 // SCROLL FROM FRAMER
 // =====================================================
+//
+// We are keeping your existing scroll bridge alive.
+//
+// For this first test, Camera 1 is the Blender camera.
+// We will add the other six cameras after this works.
+//
+// =====================================================
 
 let scrollTarget = 0;
+
 let scroll = 0;
 
 window.addEventListener(
   "message",
   (event) => {
+
     if (
       event.data?.type !== "scroll"
     ) {
@@ -180,329 +256,19 @@ window.addEventListener(
         0,
         6
       );
+
   }
 );
-
-// =====================================================
-// BLENDER POSITION → THREE POSITION
-// =====================================================
-//
-// Blender:
-//
-// X = X
-// Y = -Z
-// Z = Y
-//
-// We apply the same conversion to camera positions.
-//
-// =====================================================
-
-function blenderPositionToThree(
-  x,
-  y,
-  z
-) {
-  return new THREE.Vector3(
-    x * MODEL_SCALE,
-    z * MODEL_SCALE,
-    -y * MODEL_SCALE
-  );
-}
-
-// =====================================================
-// BLENDER ROTATION → THREE ROTATION
-// =====================================================
-
-function blenderRotationToThree(
-  rotationX,
-  rotationY,
-  rotationZ
-) {
-  const blenderEuler =
-    new THREE.Euler(
-      THREE.MathUtils.degToRad(
-        rotationX
-      ),
-      THREE.MathUtils.degToRad(
-        rotationY
-      ),
-      THREE.MathUtils.degToRad(
-        rotationZ
-      ),
-      "XYZ"
-    );
-
-  const blenderQuaternion =
-    new THREE.Quaternion();
-
-  blenderQuaternion.setFromEuler(
-    blenderEuler
-  );
-
-  // Blender camera forward = -Z
-  const blenderForward =
-    new THREE.Vector3(
-      0,
-      0,
-      -1
-    );
-
-  blenderForward.applyQuaternion(
-    blenderQuaternion
-  );
-
-  // Blender camera up = +Y
-  const blenderUp =
-    new THREE.Vector3(
-      0,
-      1,
-      0
-    );
-
-  blenderUp.applyQuaternion(
-    blenderQuaternion
-  );
-
-  // Blender → Three
-  const forward =
-    new THREE.Vector3(
-      blenderForward.x,
-      blenderForward.z,
-      -blenderForward.y
-    ).normalize();
-
-  const up =
-    new THREE.Vector3(
-      blenderUp.x,
-      blenderUp.z,
-      -blenderUp.y
-    ).normalize();
-
-  const right =
-    new THREE.Vector3();
-
-  right.crossVectors(
-    forward,
-    up
-  );
-
-  right.normalize();
-
-  const correctedUp =
-    new THREE.Vector3();
-
-  correctedUp.crossVectors(
-    right,
-    forward
-  );
-
-  correctedUp.normalize();
-
-  const backward =
-    forward
-      .clone()
-      .negate();
-
-  const matrix =
-    new THREE.Matrix4();
-
-  matrix.makeBasis(
-    right,
-    correctedUp,
-    backward
-  );
-
-  const quaternion =
-    new THREE.Quaternion();
-
-  quaternion.setFromRotationMatrix(
-    matrix
-  );
-
-  return quaternion;
-}
-
-// =====================================================
-// CAMERA STATE HELPER
-// =====================================================
-
-function createCameraState(
-  x,
-  y,
-  z,
-  rotationX,
-  rotationY,
-  rotationZ
-) {
-  return {
-    position:
-      blenderPositionToThree(
-        x,
-        y,
-        z
-      ),
-
-    quaternion:
-      blenderRotationToThree(
-        rotationX,
-        rotationY,
-        rotationZ
-      ),
-  };
-}
-
-// =====================================================
-// CAMERA STATES
-// =====================================================
-//
-// IMPORTANT:
-//
-// HERO / CAMERA 1 is now based on the NEW Blender
-// screenshot you just gave me.
-//
-// Cameras 2–6 use the camera transforms you supplied
-// previously so the scroll system moves again.
-//
-// We are NOT doing any 2D mirroring.
-//
-// =====================================================
-
-const cameraStates = [
-
-  // ===================================================
-  // 01 — HERO
-  // NEW ACTUAL BLENDER CAMERA
-  //
-  // X = 291.21
-  // Y = 2.3173
-  // Z = 78.709
-  //
-  // RX = 90
-  // RY = 90
-  // RZ = 90
-  //
-  // 35mm
-  // ===================================================
-
-  createCameraState(
-    291.21,
-    2.3173,
-    78.709,
-    90,
-    90,
-    90
-  ),
-
-  // ===================================================
-  // 02 — SERVICE
-  // ===================================================
-
-  createCameraState(
-    -181.3,
-    -222.34,
-    -9.2144,
-    106.64,
-    -0.000018,
-    -30.96
-  ),
-
-  // ===================================================
-  // 03 — ABOUT
-  // ===================================================
-
-  createCameraState(
-    122.61,
-    72.408,
-    160.58,
-    70.48,
-    -0.000171,
-    114.64
-  ),
-
-  // ===================================================
-  // 04 — PROJECT
-  // ===================================================
-
-  createCameraState(
-    -65.746,
-    -52.944,
-    17.939,
-    149.2,
-    -0.00006,
-    -35.76
-  ),
-
-  // ===================================================
-  // 05 — TESTIMONIALS
-  // ===================================================
-
-  createCameraState(
-    167.75,
-    162.91,
-    35.415,
-    97.36,
-    -0.00028,
-    115.92
-  ),
-
-  // ===================================================
-  // 06 — FAQ
-  // ===================================================
-
-  createCameraState(
-    -39.796,
-    -63.091,
-    44.541,
-    141.52,
-    -0.000219,
-    -37.36
-  ),
-
-  // ===================================================
-  // 07 — CONTACT
-  // SAME HERO CAMERA
-  // ===================================================
-
-  createCameraState(
-    291.21,
-    2.3173,
-    78.709,
-    90,
-    90,
-    90
-  ),
-];
-
-// =====================================================
-// CAMERA ANIMATION
-// =====================================================
-
-const currentPosition =
-  new THREE.Vector3();
-
-const currentQuaternion =
-  new THREE.Quaternion();
-
-function ease(t) {
-  return (
-    t *
-    t *
-    (3 - 2 * t)
-  );
-}
-
-// =====================================================
-// FLOAT
-// =====================================================
-
-const clock =
-  new THREE.Clock();
 
 // =====================================================
 // ANIMATION
 // =====================================================
 
+const clock =
+  new THREE.Clock();
+
 function animate() {
+
   requestAnimationFrame(
     animate
   );
@@ -518,85 +284,19 @@ function animate() {
     ) *
     0.08;
 
-  const maxIndex =
-    cameraStates.length - 1;
+  // ---------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------
 
-  const exact =
-    THREE.MathUtils.clamp(
-      scroll,
-      0,
-      maxIndex
+  if (camera) {
+
+    renderer.render(
+      scene,
+      camera
     );
 
-  const index =
-    Math.min(
-      Math.floor(exact),
-      maxIndex
-    );
-
-  const next =
-    Math.min(
-      index + 1,
-      maxIndex
-    );
-
-  const rawLocal =
-    exact - index;
-
-  const local =
-    ease(rawLocal);
-
-  const currentCamera =
-    cameraStates[index];
-
-  const nextCamera =
-    cameraStates[next];
-
-  // ---------------------------------------------------
-  // POSITION
-  // ---------------------------------------------------
-
-  currentPosition.lerpVectors(
-    currentCamera.position,
-    nextCamera.position,
-    local
-  );
-
-  camera.position.copy(
-    currentPosition
-  );
-
-  // ---------------------------------------------------
-  // ROTATION
-  // ---------------------------------------------------
-
-  currentQuaternion.slerpQuaternions(
-    currentCamera.quaternion,
-    nextCamera.quaternion,
-    local
-  );
-
-  camera.quaternion.copy(
-    currentQuaternion
-  );
-
-  // ---------------------------------------------------
-  // SUBTLE FLOAT
-  // ---------------------------------------------------
-
-  if (hero) {
-    heroRig.position.y =
-      Math.sin(
-        clock.getElapsedTime() *
-          1.3
-      ) *
-      0.02;
   }
 
-  renderer.render(
-    scene,
-    camera
-  );
 }
 
 animate();
@@ -608,6 +308,7 @@ animate();
 window.addEventListener(
   "resize",
   () => {
+
     const width =
       window.innerWidth;
 
@@ -619,9 +320,14 @@ window.addEventListener(
       height
     );
 
-    camera.aspect =
-      width / height;
+    if (camera) {
 
-    camera.updateProjectionMatrix();
+      camera.aspect =
+        width / height;
+
+      camera.updateProjectionMatrix();
+
+    }
+
   }
 );
