@@ -14,28 +14,44 @@ const MODEL_POSITION = new THREE.Vector3(
 );
 
 const MODEL_ROTATION = new THREE.Quaternion().setFromEuler(
-  new THREE.Euler(0, Math.PI, 0)
+  new THREE.Euler(
+    0,
+    Math.PI,
+    0
+  )
 );
 
-// Blender camera
-const BLENDER_LENS = 35;
-const BLENDER_SENSOR_X = 36;
-const BLENDER_SENSOR_Y = 24;
+// This is the Armature origin from the Blender/GLB scene.
+// The mannequin is NOT located at Blender world origin.
+const BLENDER_MODEL_ORIGIN =
+  new THREE.Vector3(
+    -4.3,
+    119.581619,
+    36.920780
+  );
+
+// Blender camera lens
+const CAMERA_FOCAL_LENGTH = 35;
 
 // =====================================================
 // RENDERER
 // =====================================================
 
-const canvas = document.getElementById("heroCanvas");
+const canvas =
+  document.getElementById("heroCanvas");
 
-const renderer = new THREE.WebGLRenderer({
-  canvas,
-  alpha: true,
-  antialias: true,
-});
+const renderer =
+  new THREE.WebGLRenderer({
+    canvas,
+    alpha: true,
+    antialias: true,
+  });
 
 renderer.setPixelRatio(
-  Math.min(window.devicePixelRatio, 2)
+  Math.min(
+    window.devicePixelRatio,
+    2
+  )
 );
 
 renderer.setSize(
@@ -43,7 +59,8 @@ renderer.setSize(
   window.innerHeight
 );
 
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.outputColorSpace =
+  THREE.SRGBColorSpace;
 
 renderer.toneMapping =
   THREE.ACESFilmicToneMapping;
@@ -54,17 +71,25 @@ renderer.toneMappingExposure = 1;
 // SCENE
 // =====================================================
 
-const scene = new THREE.Scene();
+const scene =
+  new THREE.Scene();
 
 // =====================================================
 // CAMERA
 // =====================================================
 
-const camera = new THREE.PerspectiveCamera(
-  38,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
+const camera =
+  new THREE.PerspectiveCamera(
+    40,
+    window.innerWidth /
+      window.innerHeight,
+    0.01,
+    1000
+  );
+
+// Use the actual Blender 35mm focal length.
+camera.setFocalLength(
+  CAMERA_FOCAL_LENGTH
 );
 
 // =====================================================
@@ -78,10 +103,11 @@ scene.add(
   )
 );
 
-const key = new THREE.DirectionalLight(
-  0xffffff,
-  2.5
-);
+const key =
+  new THREE.DirectionalLight(
+    0xffffff,
+    2.5
+  );
 
 key.position.set(
   5,
@@ -91,10 +117,11 @@ key.position.set(
 
 scene.add(key);
 
-const rim = new THREE.DirectionalLight(
-  0xff8ad8,
-  1.2
-);
+const rim =
+  new THREE.DirectionalLight(
+    0xff8ad8,
+    1.2
+  );
 
 rim.position.set(
   -5,
@@ -108,7 +135,8 @@ scene.add(rim);
 // HERO MODEL
 // =====================================================
 
-const heroRig = new THREE.Group();
+const heroRig =
+  new THREE.Group();
 
 scene.add(heroRig);
 
@@ -116,6 +144,7 @@ let hero = null;
 
 new GLTFLoader().load(
   "./DaudHero.glb",
+
   (gltf) => {
     hero = gltf.scene;
 
@@ -132,7 +161,9 @@ new GLTFLoader().load(
 
     heroRig.add(hero);
   },
+
   undefined,
+
   (error) => {
     console.error(
       "Failed to load DaudHero.glb:",
@@ -142,28 +173,7 @@ new GLTFLoader().load(
 );
 
 // =====================================================
-// SCROLL
-// =====================================================
-//
-// Framer sends:
-//
-// 0 = Camera 1
-// 1 = Camera 2
-// 2 = Camera 3
-// 3 = Camera 4
-// 4 = Camera 5
-// 5 = Camera 6
-// 6 = Camera 7
-//
-// Therefore:
-//
-// 0vh   → Camera 1
-// 100vh → Camera 2
-// 200vh → Camera 3
-// 300vh → Camera 4
-// 400vh → Camera 5
-// 500vh → Camera 6
-// 600vh → Camera 7
+// SCROLL FROM FRAMER
 // =====================================================
 
 let scrollTarget = 0;
@@ -192,108 +202,100 @@ window.addEventListener(
 // =====================================================
 //
 // Blender:
+//
 // X = X
 // Y = depth
 // Z = up
 //
-// Three/glTF:
+// Three:
+//
 // X = X
 // Y = up
 // Z = depth
 //
-// Therefore:
+// So:
+// X → X
+// Y → -Z
+// Z → Y
 //
-// Three X = Blender X
-// Three Y = Blender Z
-// Three Z = -Blender Y
+// IMPORTANT:
+// We first subtract the mannequin's actual
+// Armature origin.
+//
+// This is the piece we were missing.
 // =====================================================
 
-function blenderPositionToThree(
+function blenderCameraPositionToThree(
   x,
   y,
   z
 ) {
-  const position =
+  // Camera position in Blender world space
+  const cameraWorld =
     new THREE.Vector3(
-      x,
-      z,
-      -y
-    );
-
-  // Apply the exact same transform
-  // that we apply to the GLB model.
-  position.multiplyScalar(
-    MODEL_SCALE
-  );
-
-  position.applyQuaternion(
-    MODEL_ROTATION
-  );
-
-  position.add(
-    MODEL_POSITION
-  );
-
-  return position;
-}
-
-// =====================================================
-// BLENDER DIRECTION → THREE DIRECTION
-// =====================================================
-
-function blenderDirectionToThree(
-  direction
-) {
-  return new THREE.Vector3(
-    direction.x,
-    direction.z,
-    -direction.y
-  );
-}
-
-// =====================================================
-// CREATE CAMERA FROM BLENDER TRANSFORM
-// =====================================================
-//
-// This is the important part.
-//
-// We DO NOT try to directly convert the Euler
-// rotation into a Three.js Euler rotation.
-//
-// Instead:
-//
-// 1. Build the Blender camera rotation.
-// 2. Get its actual forward direction.
-// 3. Get its actual up direction.
-// 4. Convert those directions into glTF/Three space.
-// 5. Apply the exact model transform.
-// 6. Build a Three.js camera quaternion.
-//
-// This preserves the actual Blender camera composition.
-// =====================================================
-
-function createBlenderCamera(
-  x,
-  y,
-  z,
-  rotationX,
-  rotationY,
-  rotationZ
-) {
-  // ---------------------------------------------------
-  // POSITION
-  // ---------------------------------------------------
-
-  const position =
-    blenderPositionToThree(
       x,
       y,
       z
     );
 
-  // ---------------------------------------------------
-  // BLENDER ROTATION
-  // ---------------------------------------------------
+  // -----------------------------------------------
+  // CAMERA RELATIVE TO MANNEQUIN
+  // -----------------------------------------------
+
+  cameraWorld.sub(
+    BLENDER_MODEL_ORIGIN
+  );
+
+  // -----------------------------------------------
+  // BLENDER → GLTF AXIS CONVERSION
+  // -----------------------------------------------
+
+  const converted =
+    new THREE.Vector3(
+      cameraWorld.x,
+      cameraWorld.z,
+      -cameraWorld.y
+    );
+
+  // -----------------------------------------------
+  // SAME SCALE AS THE MODEL
+  // -----------------------------------------------
+
+  converted.multiplyScalar(
+    MODEL_SCALE
+  );
+
+  // -----------------------------------------------
+  // SAME ROTATION AS THE MODEL
+  // -----------------------------------------------
+
+  converted.applyQuaternion(
+    MODEL_ROTATION
+  );
+
+  // -----------------------------------------------
+  // SAME POSITION AS THE MODEL
+  // -----------------------------------------------
+
+  converted.add(
+    MODEL_POSITION
+  );
+
+  return converted;
+}
+
+// =====================================================
+// BLENDER CAMERA ROTATION → THREE
+// =====================================================
+
+function blenderCameraRotationToThree(
+  rotationX,
+  rotationY,
+  rotationZ
+) {
+  // -----------------------------------------------
+  // ORIGINAL BLENDER CAMERA ROTATION
+  // -----------------------------------------------
 
   const blenderEuler =
     new THREE.Euler(
@@ -316,13 +318,11 @@ function createBlenderCamera(
     blenderEuler
   );
 
-  // ---------------------------------------------------
-  // BLENDER CAMERA FORWARD
-  // ---------------------------------------------------
-  //
-  // Blender cameras look down local -Z.
-  // ---------------------------------------------------
+  // -----------------------------------------------
+  // GET CAMERA BASIS IN BLENDER
+  // -----------------------------------------------
 
+  // Blender camera looks down -Z.
   const blenderForward =
     new THREE.Vector3(
       0,
@@ -334,10 +334,7 @@ function createBlenderCamera(
     blenderQuaternion
   );
 
-  // ---------------------------------------------------
-  // BLENDER CAMERA UP
-  // ---------------------------------------------------
-
+  // Blender camera up is +Y.
   const blenderUp =
     new THREE.Vector3(
       0,
@@ -349,28 +346,27 @@ function createBlenderCamera(
     blenderQuaternion
   );
 
-  // ---------------------------------------------------
-  // CONVERT WORLD DIRECTIONS
-  // ---------------------------------------------------
+  // -----------------------------------------------
+  // BLENDER → THREE AXIS CONVERSION
+  // -----------------------------------------------
 
   const forward =
-    blenderDirectionToThree(
-      blenderForward
+    new THREE.Vector3(
+      blenderForward.x,
+      blenderForward.z,
+      -blenderForward.y
     );
 
   const up =
-    blenderDirectionToThree(
-      blenderUp
+    new THREE.Vector3(
+      blenderUp.x,
+      blenderUp.z,
+      -blenderUp.y
     );
 
-  // ---------------------------------------------------
-  // APPLY MODEL ROTATION
-  // ---------------------------------------------------
-  //
-  // The GLB itself is rotated by Math.PI in the
-  // existing site, so the camera needs the same
-  // rotation to preserve the Blender composition.
-  // ---------------------------------------------------
+  // -----------------------------------------------
+  // SAME MODEL ROTATION
+  // -----------------------------------------------
 
   forward.applyQuaternion(
     MODEL_ROTATION
@@ -383,9 +379,9 @@ function createBlenderCamera(
   forward.normalize();
   up.normalize();
 
-  // ---------------------------------------------------
-  // BUILD CAMERA BASIS
-  // ---------------------------------------------------
+  // -----------------------------------------------
+  // BUILD THREE CAMERA BASIS
+  // -----------------------------------------------
 
   const right =
     new THREE.Vector3();
@@ -407,9 +403,7 @@ function createBlenderCamera(
 
   correctedUp.normalize();
 
-  // Three.js camera local +Z points backward.
-  //
-  // Therefore local +Z = -forward.
+  // Three camera looks down -Z.
   const backward =
     forward
       .clone()
@@ -431,30 +425,49 @@ function createBlenderCamera(
     rotationMatrix
   );
 
+  return quaternion;
+}
+
+// =====================================================
+// CAMERA CREATOR
+// =====================================================
+
+function createCameraState(
+  x,
+  y,
+  z,
+  rotationX,
+  rotationY,
+  rotationZ
+) {
   return {
-    position,
-    quaternion,
+    position:
+      blenderCameraPositionToThree(
+        x,
+        y,
+        z
+      ),
+
+    quaternion:
+      blenderCameraRotationToThree(
+        rotationX,
+        rotationY,
+        rotationZ
+      ),
   };
 }
 
 // =====================================================
-// THE 7 BLENDER CAMERA STATES
-// =====================================================
-//
-// These values come directly from the camera
-// transforms you gave me.
-//
-// All cameras use:
-// Focal Length = 35mm
+// 7 BLENDER CAMERAS
 // =====================================================
 
 const cameraStates = [
 
-  // ===================================================
+  // ---------------------------------------------------
   // 01 — HERO
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     -133.14,
     -298.75,
     220.86,
@@ -464,11 +477,11 @@ const cameraStates = [
     -25.2
   ),
 
-  // ===================================================
+  // ---------------------------------------------------
   // 02 — SERVICE
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     -181.3,
     -222.34,
     -9.2144,
@@ -478,11 +491,11 @@ const cameraStates = [
     -30.96
   ),
 
-  // ===================================================
+  // ---------------------------------------------------
   // 03 — ABOUT
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     122.61,
     72.408,
     160.58,
@@ -492,11 +505,11 @@ const cameraStates = [
     114.64
   ),
 
-  // ===================================================
+  // ---------------------------------------------------
   // 04 — PROJECT
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     -65.746,
     -52.944,
     17.939,
@@ -506,11 +519,11 @@ const cameraStates = [
     -35.76
   ),
 
-  // ===================================================
+  // ---------------------------------------------------
   // 05 — TESTIMONIALS
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     167.75,
     162.91,
     35.415,
@@ -520,11 +533,11 @@ const cameraStates = [
     115.92
   ),
 
-  // ===================================================
+  // ---------------------------------------------------
   // 06 — FAQ
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     -39.796,
     -63.091,
     44.541,
@@ -534,14 +547,11 @@ const cameraStates = [
     -37.36
   ),
 
-  // ===================================================
+  // ---------------------------------------------------
   // 07 — CONTACT
-  // ===================================================
-  //
-  // Same camera transform as Camera 1.
-  // ===================================================
+  // ---------------------------------------------------
 
-  createBlenderCamera(
+  createCameraState(
     -133.14,
     -298.75,
     220.86,
@@ -551,83 +561,6 @@ const cameraStates = [
     -25.2
   ),
 ];
-
-// =====================================================
-// CAMERA FOV
-// =====================================================
-//
-// Blender camera:
-//
-// Lens = 35mm
-// Sensor X = 36mm
-// Sensor Y = 24mm
-// Sensor Fit = Auto
-//
-// We reproduce that projection in Three.js.
-// =====================================================
-
-function updateCameraProjection() {
-  const width =
-    window.innerWidth;
-
-  const height =
-    window.innerHeight;
-
-  const aspect =
-    width / height;
-
-  camera.aspect =
-    aspect;
-
-  let verticalFOV;
-
-  const sensorAspect =
-    BLENDER_SENSOR_X /
-    BLENDER_SENSOR_Y;
-
-  if (
-    aspect >= sensorAspect
-  ) {
-    // Landscape / horizontal sensor fit
-
-    verticalFOV =
-      2 *
-      Math.atan(
-        (
-          BLENDER_SENSOR_X /
-          aspect
-        ) /
-          (
-            2 *
-            BLENDER_LENS
-          )
-      );
-  } else {
-    // Portrait / vertical sensor fit
-
-    verticalFOV =
-      2 *
-      Math.atan(
-        BLENDER_SENSOR_Y /
-          (
-            2 *
-            BLENDER_LENS
-          )
-      );
-  }
-
-  camera.fov =
-    THREE.MathUtils.radToDeg(
-      verticalFOV
-    );
-
-  camera.near = 0.1;
-  camera.far = 1000;
-
-  camera.updateProjectionMatrix();
-}
-
-updateCameraProjection();
 
 // =====================================================
 // CAMERA ANIMATION
@@ -648,14 +581,14 @@ function ease(t) {
 }
 
 // =====================================================
-// FLOATING MODEL
+// FLOAT
 // =====================================================
 
 const clock =
   new THREE.Clock();
 
 // =====================================================
-// ANIMATION LOOP
+// ANIMATION
 // =====================================================
 
 function animate() {
@@ -701,7 +634,7 @@ function animate() {
     );
 
   // ---------------------------------------------------
-  // LOCAL CAMERA TRANSITION
+  // TRANSITION PROGRESS
   // ---------------------------------------------------
 
   const rawLocal =
@@ -776,11 +709,20 @@ animate();
 window.addEventListener(
   "resize",
   () => {
+    const width =
+      window.innerWidth;
+
+    const height =
+      window.innerHeight;
+
     renderer.setSize(
-      window.innerWidth,
-      window.innerHeight
+      width,
+      height
     );
 
-    updateCameraProjection();
+    camera.aspect =
+      width / height;
+
+    camera.updateProjectionMatrix();
   }
 );
