@@ -17,25 +17,6 @@ const CAMERA_FOCAL_LENGTH = 35;
 const CAMERA_FILM_GAUGE = 36;
 
 // =====================================================
-// HERO FRAMING
-// =====================================================
-//
-// Current mathematically-correct camera is:
-//
-// X = 9.02751
-// Y = 0.089979
-// Z = -0.0718363
-//
-// The Blender screenshot has considerably more
-// breathing room around the mannequin.
-//
-// We therefore pull the camera back along its
-// viewing axis.
-//
-
-const HERO_CAMERA_DISTANCE_MULTIPLIER = 1.55;
-
-// =====================================================
 // RENDERER
 // =====================================================
 
@@ -68,23 +49,6 @@ renderer.toneMapping =
   THREE.ACESFilmicToneMapping;
 
 renderer.toneMappingExposure = 1;
-
-// =====================================================
-// MIRROR HERO VIEW
-// =====================================================
-//
-// The current mathematically reconstructed camera
-// produces the correct 3D orientation, but the
-// resulting screen composition is horizontally
-// opposite to the Blender camera screenshot.
-//
-// Mirror the final render horizontally.
-//
-// This does NOT rotate or modify the mannequin.
-//
-
-canvas.style.transform =
-  "scaleX(-1)";
 
 // =====================================================
 // SCENE
@@ -169,10 +133,9 @@ new GLTFLoader().load(
   (gltf) => {
     hero = gltf.scene;
 
-    // ---------------------------------------------------
-    // DO NOT ROTATE THE MODEL.
-    // DO NOT CHANGE ITS ORIENTATION.
-    // ---------------------------------------------------
+    // IMPORTANT:
+    // The mannequin itself is NOT rotated.
+    // The GLB already contains the correct orientation.
 
     hero.scale.setScalar(
       MODEL_SCALE
@@ -221,171 +184,293 @@ window.addEventListener(
 );
 
 // =====================================================
-// CAMERA 1 — HERO
+// BLENDER POSITION → THREE POSITION
 // =====================================================
-//
-// Source of truth:
 //
 // Blender:
 //
-// Location
-// X = 291.21
-// Y = 2.3173
-// Z = 78.709
+// X = X
+// Y = -Z
+// Z = Y
 //
-// Rotation
-// X = 90°
-// Y = 90°
-// Z = 90°
-//
-// Lens
-// 35mm
-//
-// Converted Three.js camera:
-//
-// Position
-// X = 9.02751
-// Y = 0.089979
-// Z = -0.0718363
-//
-// Quaternion
-// X = 0.5
-// Y = 0.5
-// Z = 0.5
-// W = 0.5
+// We apply the same conversion to camera positions.
 //
 // =====================================================
 
-const heroCameraPosition =
-  new THREE.Vector3(
-    9.02751,
-    0.089979,
-    -0.0718363
+function blenderPositionToThree(
+  x,
+  y,
+  z
+) {
+  return new THREE.Vector3(
+    x * MODEL_SCALE,
+    z * MODEL_SCALE,
+    -y * MODEL_SCALE
+  );
+}
+
+// =====================================================
+// BLENDER ROTATION → THREE ROTATION
+// =====================================================
+
+function blenderRotationToThree(
+  rotationX,
+  rotationY,
+  rotationZ
+) {
+  const blenderEuler =
+    new THREE.Euler(
+      THREE.MathUtils.degToRad(
+        rotationX
+      ),
+      THREE.MathUtils.degToRad(
+        rotationY
+      ),
+      THREE.MathUtils.degToRad(
+        rotationZ
+      ),
+      "XYZ"
+    );
+
+  const blenderQuaternion =
+    new THREE.Quaternion();
+
+  blenderQuaternion.setFromEuler(
+    blenderEuler
   );
 
-// Pull the camera farther away from the mannequin.
-//
-// We scale around the mannequin's approximate
-// scene center rather than simply changing the
-// focal length, preserving the 35mm perspective.
+  // Blender camera forward = -Z
+  const blenderForward =
+    new THREE.Vector3(
+      0,
+      0,
+      -1
+    );
 
-const heroCameraCenter =
-  new THREE.Vector3(
-    0,
-    -2.35,
-    0
+  blenderForward.applyQuaternion(
+    blenderQuaternion
   );
 
-heroCameraPosition
-  .sub(heroCameraCenter)
-  .multiplyScalar(
-    HERO_CAMERA_DISTANCE_MULTIPLIER
-  )
-  .add(heroCameraCenter);
+  // Blender camera up = +Y
+  const blenderUp =
+    new THREE.Vector3(
+      0,
+      1,
+      0
+    );
 
-const heroCameraQuaternion =
-  new THREE.Quaternion(
-    0.5,
-    0.5,
-    0.5,
-    0.5
+  blenderUp.applyQuaternion(
+    blenderQuaternion
   );
+
+  // Blender → Three
+  const forward =
+    new THREE.Vector3(
+      blenderForward.x,
+      blenderForward.z,
+      -blenderForward.y
+    ).normalize();
+
+  const up =
+    new THREE.Vector3(
+      blenderUp.x,
+      blenderUp.z,
+      -blenderUp.y
+    ).normalize();
+
+  const right =
+    new THREE.Vector3();
+
+  right.crossVectors(
+    forward,
+    up
+  );
+
+  right.normalize();
+
+  const correctedUp =
+    new THREE.Vector3();
+
+  correctedUp.crossVectors(
+    right,
+    forward
+  );
+
+  correctedUp.normalize();
+
+  const backward =
+    forward
+      .clone()
+      .negate();
+
+  const matrix =
+    new THREE.Matrix4();
+
+  matrix.makeBasis(
+    right,
+    correctedUp,
+    backward
+  );
+
+  const quaternion =
+    new THREE.Quaternion();
+
+  quaternion.setFromRotationMatrix(
+    matrix
+  );
+
+  return quaternion;
+}
+
+// =====================================================
+// CAMERA STATE HELPER
+// =====================================================
+
+function createCameraState(
+  x,
+  y,
+  z,
+  rotationX,
+  rotationY,
+  rotationZ
+) {
+  return {
+    position:
+      blenderPositionToThree(
+        x,
+        y,
+        z
+      ),
+
+    quaternion:
+      blenderRotationToThree(
+        rotationX,
+        rotationY,
+        rotationZ
+      ),
+  };
+}
 
 // =====================================================
 // CAMERA STATES
+// =====================================================
+//
+// IMPORTANT:
+//
+// HERO / CAMERA 1 is now based on the NEW Blender
+// screenshot you just gave me.
+//
+// Cameras 2–6 use the camera transforms you supplied
+// previously so the scroll system moves again.
+//
+// We are NOT doing any 2D mirroring.
+//
 // =====================================================
 
 const cameraStates = [
 
   // ===================================================
   // 01 — HERO
+  // NEW ACTUAL BLENDER CAMERA
+  //
+  // X = 291.21
+  // Y = 2.3173
+  // Z = 78.709
+  //
+  // RX = 90
+  // RY = 90
+  // RZ = 90
+  //
+  // 35mm
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    291.21,
+    2.3173,
+    78.709,
+    90,
+    90,
+    90
+  ),
 
   // ===================================================
   // 02 — SERVICE
-  // PLACEHOLDER FOR NOW
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    -181.3,
+    -222.34,
+    -9.2144,
+    106.64,
+    -0.000018,
+    -30.96
+  ),
 
   // ===================================================
   // 03 — ABOUT
-  // PLACEHOLDER FOR NOW
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    122.61,
+    72.408,
+    160.58,
+    70.48,
+    -0.000171,
+    114.64
+  ),
 
   // ===================================================
   // 04 — PROJECT
-  // PLACEHOLDER FOR NOW
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    -65.746,
+    -52.944,
+    17.939,
+    149.2,
+    -0.00006,
+    -35.76
+  ),
 
   // ===================================================
   // 05 — TESTIMONIALS
-  // PLACEHOLDER FOR NOW
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    167.75,
+    162.91,
+    35.415,
+    97.36,
+    -0.00028,
+    115.92
+  ),
 
   // ===================================================
   // 06 — FAQ
-  // PLACEHOLDER FOR NOW
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    -39.796,
+    -63.091,
+    44.541,
+    141.52,
+    -0.000219,
+    -37.36
+  ),
 
   // ===================================================
   // 07 — CONTACT
-  // SAME AS HERO
+  // SAME HERO CAMERA
   // ===================================================
 
-  {
-    position:
-      heroCameraPosition.clone(),
-
-    quaternion:
-      heroCameraQuaternion.clone(),
-  },
+  createCameraState(
+    291.21,
+    2.3173,
+    78.709,
+    90,
+    90,
+    90
+  ),
 ];
 
 // =====================================================
@@ -421,6 +506,10 @@ function animate() {
   requestAnimationFrame(
     animate
   );
+
+  // ---------------------------------------------------
+  // SMOOTH SCROLL
+  // ---------------------------------------------------
 
   scroll +=
     (
@@ -464,7 +553,7 @@ function animate() {
     cameraStates[next];
 
   // ---------------------------------------------------
-  // CAMERA POSITION
+  // POSITION
   // ---------------------------------------------------
 
   currentPosition.lerpVectors(
@@ -478,7 +567,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // CAMERA ROTATION
+  // ROTATION
   // ---------------------------------------------------
 
   currentQuaternion.slerpQuaternions(
@@ -492,7 +581,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // SUBTLE MODEL FLOAT
+  // SUBTLE FLOAT
   // ---------------------------------------------------
 
   if (hero) {
