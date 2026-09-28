@@ -13,26 +13,11 @@ const MODEL_POSITION = new THREE.Vector3(
   0
 );
 
+// Blender camera:
+// 35mm lens
+// Default Blender sensor width = 36mm
 const CAMERA_FOCAL_LENGTH = 35;
-
-// =====================================================
-// HERO CAMERA CORRECTION
-// =====================================================
-//
-// TEMPORARY CORRECTION FOR CAMERA 1.
-//
-// We are deliberately NOT touching the mannequin.
-//
-// The current Blender-derived camera is close to the
-// correct composition, but is viewing from the wrong
-// side.
-//
-// Move camera toward its RIGHT by this amount.
-const HERO_CAMERA_RIGHT_OFFSET = 4.0;
-
-// Rotate camera around world Y.
-const HERO_CAMERA_YAW =
-  THREE.MathUtils.degToRad(90);
+const CAMERA_FILM_GAUGE = 36;
 
 // =====================================================
 // RENDERER
@@ -87,6 +72,10 @@ const camera =
     0.01,
     1000
   );
+
+// Match Blender's default camera sensor.
+camera.filmGauge =
+  CAMERA_FILM_GAUGE;
 
 camera.setFocalLength(
   CAMERA_FOCAL_LENGTH
@@ -149,10 +138,7 @@ new GLTFLoader().load(
     hero = gltf.scene;
 
     // ---------------------------------------------------
-    // MANNEQUIN IS FIXED.
-    //
-    // NO ROTATION.
-    // NO SCROLL ROTATION.
+    // DO NOT ROTATE THE MANNEQUIN
     // ---------------------------------------------------
 
     hero.scale.setScalar(
@@ -202,359 +188,200 @@ window.addEventListener(
 );
 
 // =====================================================
-// BLENDER → THREE POSITION
-// =====================================================
-
-function blenderPositionToThree(
-  x,
-  y,
-  z
-) {
-  return new THREE.Vector3(
-    x * MODEL_SCALE,
-    z * MODEL_SCALE,
-    -y * MODEL_SCALE
-  );
-}
-
-// =====================================================
-// BLENDER CAMERA ROTATION → THREE
-// =====================================================
-
-function blenderRotationToThree(
-  rotationX,
-  rotationY,
-  rotationZ
-) {
-  const blenderEuler =
-    new THREE.Euler(
-      THREE.MathUtils.degToRad(
-        rotationX
-      ),
-      THREE.MathUtils.degToRad(
-        rotationY
-      ),
-      THREE.MathUtils.degToRad(
-        rotationZ
-      ),
-      "XYZ"
-    );
-
-  const blenderQuaternion =
-    new THREE.Quaternion();
-
-  blenderQuaternion.setFromEuler(
-    blenderEuler
-  );
-
-  // Blender camera looks down -Z.
-  const blenderForward =
-    new THREE.Vector3(
-      0,
-      0,
-      -1
-    );
-
-  blenderForward.applyQuaternion(
-    blenderQuaternion
-  );
-
-  // Blender camera up is +Y.
-  const blenderUp =
-    new THREE.Vector3(
-      0,
-      1,
-      0
-    );
-
-  blenderUp.applyQuaternion(
-    blenderQuaternion
-  );
-
-  // Blender → Three axis conversion.
-  const forward =
-    new THREE.Vector3(
-      blenderForward.x,
-      blenderForward.z,
-      -blenderForward.y
-    );
-
-  const up =
-    new THREE.Vector3(
-      blenderUp.x,
-      blenderUp.z,
-      -blenderUp.y
-    );
-
-  forward.normalize();
-  up.normalize();
-
-  // Camera right vector.
-  const right =
-    new THREE.Vector3();
-
-  right.crossVectors(
-    forward,
-    up
-  );
-
-  right.normalize();
-
-  // Corrected up vector.
-  const correctedUp =
-    new THREE.Vector3();
-
-  correctedUp.crossVectors(
-    right,
-    forward
-  );
-
-  correctedUp.normalize();
-
-  // Three.js camera looks down -Z.
-  const backward =
-    forward
-      .clone()
-      .negate();
-
-  const rotationMatrix =
-    new THREE.Matrix4();
-
-  rotationMatrix.makeBasis(
-    right,
-    correctedUp,
-    backward
-  );
-
-  const quaternion =
-    new THREE.Quaternion();
-
-  quaternion.setFromRotationMatrix(
-    rotationMatrix
-  );
-
-  return quaternion;
-}
-
-// =====================================================
-// CAMERA STATE
-// =====================================================
-
-function createCameraState(
-  x,
-  y,
-  z,
-  rotationX,
-  rotationY,
-  rotationZ
-) {
-  return {
-    position:
-      blenderPositionToThree(
-        x,
-        y,
-        z
-      ),
-
-    quaternion:
-      blenderRotationToThree(
-        rotationX,
-        rotationY,
-        rotationZ
-      ),
-  };
-}
-
-// =====================================================
 // CAMERA STATES
+// =====================================================
+//
+// CAMERA 1 IS NOW CALCULATED FROM:
+//
+// Blender Camera:
+//
+// Location:
+// X = 291.21
+// Y = 2.3173
+// Z = 78.709
+//
+// Rotation:
+// X = 90°
+// Y = 90°
+// Z = 90°
+//
+// Lens:
+// 35mm
+//
+// GLB root + existing model scale:
+// 0.031
+//
+// Resulting Three.js world transform:
+//
+// Position:
+// X = 9.02751
+// Y = 0.089979
+// Z = -0.0718363
+//
+// Quaternion:
+// X = 0.5
+// Y = 0.5
+// Z = 0.5
+// W = 0.5
+//
 // =====================================================
 
 const cameraStates = [
 
   // ===================================================
   // 01 — HERO
+  // EXACT BLENDER CAMERA
   // ===================================================
 
-  createCameraState(
-    -133.14,
-    -298.75,
-    220.86,
+  {
+    position:
+      new THREE.Vector3(
+        9.02751,
+        0.089979,
+        -0.0718363
+      ),
 
-    66.96,
-    -0.000309,
-    -25.2
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ),
+  },
 
   // ===================================================
   // 02 — SERVICE
+  // TEMPORARY — OLD CONVERSION
   // ===================================================
 
-  createCameraState(
-    -181.3,
-    -222.34,
-    -9.2144,
+  {
+    position:
+      new THREE.Vector3(
+        -5.621,
+        -0.2856,
+        6.893
+      ),
 
-    106.64,
-    -0.000018,
-    -30.96
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0,
+        0,
+        0,
+        1
+      ),
+  },
 
   // ===================================================
   // 03 — ABOUT
+  // TEMPORARY
   // ===================================================
 
-  createCameraState(
-    122.61,
-    72.408,
-    160.58,
+  {
+    position:
+      new THREE.Vector3(
+        3.801,
+        4.978,
+        -2.245
+      ),
 
-    70.48,
-    -0.000171,
-    114.64
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0,
+        0,
+        0,
+        1
+      ),
+  },
 
   // ===================================================
   // 04 — PROJECT
+  // TEMPORARY
   // ===================================================
 
-  createCameraState(
-    -65.746,
-    -52.944,
-    17.939,
+  {
+    position:
+      new THREE.Vector3(
+        -2.038,
+        0.556,
+        1.641
+      ),
 
-    149.2,
-    -0.00006,
-    -35.76
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0,
+        0,
+        0,
+        1
+      ),
+  },
 
   // ===================================================
   // 05 — TESTIMONIALS
+  // TEMPORARY
   // ===================================================
 
-  createCameraState(
-    167.75,
-    162.91,
-    35.415,
+  {
+    position:
+      new THREE.Vector3(
+        5.200,
+        1.098,
+        -5.051
+      ),
 
-    97.36,
-    -0.00028,
-    115.92
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0,
+        0,
+        0,
+        1
+      ),
+  },
 
   // ===================================================
   // 06 — FAQ
+  // TEMPORARY
   // ===================================================
 
-  createCameraState(
-    -39.796,
-    -63.091,
-    44.541,
+  {
+    position:
+      new THREE.Vector3(
+        -1.233,
+        1.381,
+        1.956
+      ),
 
-    141.52,
-    -0.000219,
-    -37.36
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0,
+        0,
+        0,
+        1
+      ),
+  },
 
   // ===================================================
   // 07 — CONTACT
+  // SAME AS HERO
   // ===================================================
 
-  createCameraState(
-    -133.14,
-    -298.75,
-    220.86,
+  {
+    position:
+      new THREE.Vector3(
+        9.02751,
+        0.089979,
+        -0.0718363
+      ),
 
-    66.96,
-    -0.000309,
-    -25.2
-  ),
+    quaternion:
+      new THREE.Quaternion(
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ),
+  },
 ];
-
-// =====================================================
-// APPLY HERO CAMERA CORRECTION
-// =====================================================
-//
-// IMPORTANT:
-//
-// We correct the CAMERA, not the mannequin.
-//
-// 1. Move camera toward its local right.
-// 2. Rotate camera +90° around WORLD Y.
-// =====================================================
-
-function correctHeroCamera(
-  state
-) {
-  // ---------------------------------------------------
-  // MOVE CAMERA TOWARD ITS RIGHT
-  // ---------------------------------------------------
-
-  const forward =
-    new THREE.Vector3(
-      0,
-      0,
-      -1
-    );
-
-  forward.applyQuaternion(
-    state.quaternion
-  );
-
-  const up =
-    new THREE.Vector3(
-      0,
-      1,
-      0
-    );
-
-  up.applyQuaternion(
-    state.quaternion
-  );
-
-  const right =
-    new THREE.Vector3();
-
-  right.crossVectors(
-    forward,
-    up
-  );
-
-  right.normalize();
-
-  state.position.add(
-    right.multiplyScalar(
-      HERO_CAMERA_RIGHT_OFFSET
-    )
-  );
-
-  // ---------------------------------------------------
-  // ROTATE CAMERA +90° AROUND WORLD Y
-  // ---------------------------------------------------
-
-  const yaw =
-    new THREE.Quaternion();
-
-  yaw.setFromAxisAngle(
-    new THREE.Vector3(
-      0,
-      1,
-      0
-    ),
-    HERO_CAMERA_YAW
-  );
-
-  state.quaternion =
-    yaw
-      .clone()
-      .multiply(
-        state.quaternion
-      );
-}
-
-// Apply correction ONLY to Camera 1.
-correctHeroCamera(
-  cameraStates[0]
-);
 
 // =====================================================
 // CAMERA ANIMATION
@@ -590,20 +417,13 @@ function animate() {
     animate
   );
 
-  // ---------------------------------------------------
-  // SMOOTH SCROLL
-  // ---------------------------------------------------
-
+  // Smooth scroll
   scroll +=
     (
       scrollTarget -
       scroll
     ) *
     0.08;
-
-  // ---------------------------------------------------
-  // CAMERA INDEX
-  // ---------------------------------------------------
 
   const maxIndex =
     cameraStates.length - 1;
@@ -627,10 +447,6 @@ function animate() {
       maxIndex
     );
 
-  // ---------------------------------------------------
-  // TRANSITION
-  // ---------------------------------------------------
-
   const rawLocal =
     exact - index;
 
@@ -644,7 +460,7 @@ function animate() {
     cameraStates[next];
 
   // ---------------------------------------------------
-  // CAMERA POSITION
+  // POSITION
   // ---------------------------------------------------
 
   currentPosition.lerpVectors(
@@ -658,7 +474,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // CAMERA ROTATION
+  // ROTATION
   // ---------------------------------------------------
 
   currentQuaternion.slerpQuaternions(
@@ -672,7 +488,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // MANNEQUIN FLOAT
+  // SUBTLE MODEL FLOAT
   // ---------------------------------------------------
 
   if (hero) {
@@ -683,10 +499,6 @@ function animate() {
       ) *
       0.02;
   }
-
-  // ---------------------------------------------------
-  // RENDER
-  // ---------------------------------------------------
 
   renderer.render(
     scene,
