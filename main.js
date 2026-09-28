@@ -1,157 +1,205 @@
-import * as THREE from "https://esm.sh/three@0.163.0";
-import { GLTFLoader } from "https://esm.sh/three@0.163.0/examples/jsm/loaders/GLTFLoader";
+import * as THREE from "https://esm.sh/three@0.163.0"
+import { GLTFLoader } from "https://esm.sh/three@0.163.0/examples/jsm/loaders/GLTFLoader"
 
-// ------------------------------------------
-// Renderer
-// ------------------------------------------
-const canvas = document.getElementById("heroCanvas");
+// -----------------------------------------------------
+// CANVAS + RENDERER
+// -----------------------------------------------------
+
+const canvas = document.getElementById("heroCanvas")
 
 const renderer = new THREE.WebGLRenderer({
-  canvas,
-  alpha: true,
-  antialias: true,
-});
+    canvas,
+    alpha: true,
+    antialias: true,
+})
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setSize(window.innerWidth, window.innerHeight)
 
-// ------------------------------------------
-// Scene
-// ------------------------------------------
-const scene = new THREE.Scene();
+renderer.outputColorSpace = THREE.SRGBColorSpace
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1
+
+// -----------------------------------------------------
+// SCENE
+// -----------------------------------------------------
+
+const scene = new THREE.Scene()
 
 const camera = new THREE.PerspectiveCamera(
-  32,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  100
-);
+    32,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    100
+)
 
-scene.add(new THREE.AmbientLight(0xffffff, 1));
+// -----------------------------------------------------
+// LIGHTS
+// -----------------------------------------------------
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 2.5);
-keyLight.position.set(5, 5, 5);
-scene.add(keyLight);
+scene.add(new THREE.AmbientLight(0xffffff, 1))
 
-const rimLight = new THREE.DirectionalLight(0xff8ad8, 1.2);
-rimLight.position.set(-5, 3, -5);
-scene.add(rimLight);
+const keyLight = new THREE.DirectionalLight(0xffffff, 2.5)
+keyLight.position.set(5, 5, 5)
+scene.add(keyLight)
 
-// ------------------------------------------
-// Hero
-// ------------------------------------------
-const heroRig = new THREE.Group();
-scene.add(heroRig);
+const rimLight = new THREE.DirectionalLight(0xff8ad8, 1.2)
+rimLight.position.set(-5, 3, -5)
+scene.add(rimLight)
 
-let hero = null;
+// -----------------------------------------------------
+// HERO MODEL
+// -----------------------------------------------------
 
-new GLTFLoader().load("./DaudHero.glb", (gltf) => {
-  hero = gltf.scene;
+const heroRig = new THREE.Group()
+scene.add(heroRig)
 
-  hero.scale.setScalar(0.031);
-  hero.position.set(0, -2.35, 0);
-  hero.rotation.y = Math.PI;
+let hero = null
 
-  heroRig.add(hero);
+new GLTFLoader().load(
+    "./DaudHero.glb",
+    (gltf) => {
+        hero = gltf.scene
 
-  console.log("✅ GLB Loaded");
-});
+        hero.scale.setScalar(0.031)
+        hero.position.set(0, -2.35, 0)
+        hero.rotation.y = Math.PI
 
-// ------------------------------------------
-// Camera Timeline (7 Sections)
-// ------------------------------------------
+        heroRig.add(hero)
 
-const cameraStates = [
-  {
-    position: new THREE.Vector3(0, 0.3, 8),
-    target: new THREE.Vector3(0, -0.15, 0),
-  },
-  {
-    position: new THREE.Vector3(0.9, -0.5, 6),
-    target: new THREE.Vector3(0, -1.4, 0),
-  },
-  {
-    position: new THREE.Vector3(-2.2, 0.3, 5.5),
-    target: new THREE.Vector3(0, -0.3, 0),
-  },
-  {
-    position: new THREE.Vector3(2.1, 0.8, 4.6),
-    target: new THREE.Vector3(0, 0.1, 0),
-  },
-  {
-    position: new THREE.Vector3(0, 1.6, 4),
-    target: new THREE.Vector3(0, 0.5, 0),
-  },
-  {
-    position: new THREE.Vector3(-1.2, 0.6, 5.3),
-    target: new THREE.Vector3(0, -0.4, 0),
-  },
-  {
-    position: new THREE.Vector3(0, 0.45, 3.9),
-    target: new THREE.Vector3(0, 0.2, 0),
-  },
-];
+        console.log("✅ GLB Loaded")
+    },
+    undefined,
+    (error) => {
+        console.error("❌ Failed to load GLB", error)
+    }
+)
 
-let activeSection = 0;
-let sectionProgress = 0;
+// -----------------------------------------------------
+// GLOBAL SCROLL FROM FRAMER
+// -----------------------------------------------------
 
-const lookTarget = new THREE.Vector3();
-
-// ------------------------------------------
-// Listen for Framer
-// ------------------------------------------
+let globalProgress = 0
+let smoothProgress = 0
 
 window.addEventListener("message", (event) => {
-  if (event.origin !== "https://most-otter-554870.framer.app") return;
+    if (event.data?.type === "scroll") {
+        globalProgress = THREE.MathUtils.clamp(event.data.progress, 0, 1)
+    }
+})
 
-  if (event.data?.type === "camera") {
-    activeSection = Math.max(
-      0,
-      Math.min(event.data.section, cameraStates.length - 1)
-    );
+// -----------------------------------------------------
+// CAMERA KEYFRAMES (7 SECTIONS)
+// -----------------------------------------------------
 
-    sectionProgress = THREE.MathUtils.clamp(event.data.progress, 0, 1);
-  }
-});
+const cameraStates = [
+    // Hero
+    {
+        position: new THREE.Vector3(0, 0.3, 8),
+        target: new THREE.Vector3(0, -0.15, 0),
+    },
 
-// ------------------------------------------
-// Animation
-// ------------------------------------------
+    // Service
+    {
+        position: new THREE.Vector3(1.2, -0.55, 6.2),
+        target: new THREE.Vector3(0, -1.2, 0),
+    },
 
-const clock = new THREE.Clock();
+    // About
+    {
+        position: new THREE.Vector3(-2.2, 0.25, 5.5),
+        target: new THREE.Vector3(0, -0.2, 0),
+    },
+
+    // Project
+    {
+        position: new THREE.Vector3(2.1, 0.85, 4.7),
+        target: new THREE.Vector3(0, 0.15, 0),
+    },
+
+    // Testimonials
+    {
+        position: new THREE.Vector3(0, 1.55, 4.1),
+        target: new THREE.Vector3(0, 0.55, 0),
+    },
+
+    // FAQ
+    {
+        position: new THREE.Vector3(-1.3, 0.55, 5.2),
+        target: new THREE.Vector3(0, -0.35, 0),
+    },
+
+    // Contact
+    {
+        position: new THREE.Vector3(0, 0.45, 3.9),
+        target: new THREE.Vector3(0, 0.2, 0),
+    },
+]
+
+const lookTarget = new THREE.Vector3()
+
+// -----------------------------------------------------
+// ANIMATION LOOP
+// -----------------------------------------------------
+
+const clock = new THREE.Clock()
 
 function animate() {
-  requestAnimationFrame(animate);
+    requestAnimationFrame(animate)
 
-  const from = cameraStates[activeSection];
-  const to = cameraStates[Math.min(activeSection + 1, cameraStates.length - 1)];
+    // Smooth incoming scroll
+    smoothProgress += (globalProgress - smoothProgress) * 0.08
 
-  camera.position.lerpVectors(from.position, to.position, sectionProgress);
+    // Split page into camera chapters
+    const chapters = cameraStates.length - 1
 
-  lookTarget.lerpVectors(from.target, to.target, sectionProgress);
+    const timeline = smoothProgress * chapters
 
-  camera.lookAt(lookTarget);
+    const currentSection = Math.min(
+        Math.floor(timeline),
+        chapters - 1
+    )
 
-  if (hero) {
-    const t = clock.getElapsedTime();
+    const sectionProgress = timeline - currentSection
 
-    heroRig.position.y = Math.sin(t * 1.4) * 0.03;
-    heroRig.rotation.z = Math.sin(t * 0.8) * 0.015;
-  }
+    const from = cameraStates[currentSection]
+    const to = cameraStates[currentSection + 1]
 
-  renderer.render(scene, camera);
+    // Camera interpolation
+    camera.position.lerpVectors(
+        from.position,
+        to.position,
+        sectionProgress
+    )
+
+    lookTarget.lerpVectors(
+        from.target,
+        to.target,
+        sectionProgress
+    )
+
+    camera.lookAt(lookTarget)
+
+    // Idle motion only
+    if (hero) {
+        const t = clock.getElapsedTime()
+
+        heroRig.position.y = Math.sin(t * 1.4) * 0.03
+        heroRig.rotation.z = Math.sin(t * 0.8) * 0.015
+    }
+
+    renderer.render(scene, camera)
 }
 
-animate();
+animate()
 
-// ------------------------------------------
-// Resize
-// ------------------------------------------
+// -----------------------------------------------------
+// RESIZE
+// -----------------------------------------------------
+
 window.addEventListener("resize", () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-});
+    renderer.setSize(window.innerWidth, window.innerHeight)
+
+    camera.aspect = window.innerWidth / window.innerHeight
+    camera.updateProjectionMatrix()
+})
