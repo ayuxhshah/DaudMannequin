@@ -16,6 +16,25 @@ const MODEL_POSITION = new THREE.Vector3(
 const CAMERA_FOCAL_LENGTH = 35;
 
 // =====================================================
+// HERO CAMERA CORRECTION
+// =====================================================
+//
+// TEMPORARY CORRECTION FOR CAMERA 1.
+//
+// We are deliberately NOT touching the mannequin.
+//
+// The current Blender-derived camera is close to the
+// correct composition, but is viewing from the wrong
+// side.
+//
+// Move camera toward its RIGHT by this amount.
+const HERO_CAMERA_RIGHT_OFFSET = 4.0;
+
+// Rotate camera around world Y.
+const HERO_CAMERA_YAW =
+  THREE.MathUtils.degToRad(90);
+
+// =====================================================
 // RENDERER
 // =====================================================
 
@@ -130,12 +149,10 @@ new GLTFLoader().load(
     hero = gltf.scene;
 
     // ---------------------------------------------------
-    // IMPORTANT:
+    // MANNEQUIN IS FIXED.
     //
-    // DO NOT ROTATE THE GLB.
-    //
-    // The exported GLB already has the Blender
-    // mannequin orientation.
+    // NO ROTATION.
+    // NO SCROLL ROTATION.
     // ---------------------------------------------------
 
     hero.scale.setScalar(
@@ -145,8 +162,6 @@ new GLTFLoader().load(
     hero.position.copy(
       MODEL_POSITION
     );
-
-    // NO hero.rotation.y = Math.PI
 
     heroRig.add(hero);
   },
@@ -163,15 +178,6 @@ new GLTFLoader().load(
 
 // =====================================================
 // SCROLL FROM FRAMER
-// =====================================================
-//
-// 0 = Camera 1
-// 1 = Camera 2
-// 2 = Camera 3
-// 3 = Camera 4
-// 4 = Camera 5
-// 5 = Camera 6
-// 6 = Camera 7
 // =====================================================
 
 let scrollTarget = 0;
@@ -198,23 +204,6 @@ window.addEventListener(
 // =====================================================
 // BLENDER → THREE POSITION
 // =====================================================
-//
-// Blender:
-// X = X
-// Y = depth
-// Z = up
-//
-// Three / glTF:
-// X = X
-// Y = up
-// Z = depth
-//
-// Conversion:
-//
-// X → X
-// Y → -Z
-// Z → Y
-// =====================================================
 
 function blenderPositionToThree(
   x,
@@ -237,10 +226,6 @@ function blenderRotationToThree(
   rotationY,
   rotationZ
 ) {
-  // ---------------------------------------------------
-  // Blender camera rotation
-  // ---------------------------------------------------
-
   const blenderEuler =
     new THREE.Euler(
       THREE.MathUtils.degToRad(
@@ -262,13 +247,7 @@ function blenderRotationToThree(
     blenderEuler
   );
 
-  // ---------------------------------------------------
-  // Blender camera forward
-  // ---------------------------------------------------
-  //
-  // Blender cameras look down -Z.
-  // ---------------------------------------------------
-
+  // Blender camera looks down -Z.
   const blenderForward =
     new THREE.Vector3(
       0,
@@ -280,10 +259,7 @@ function blenderRotationToThree(
     blenderQuaternion
   );
 
-  // ---------------------------------------------------
-  // Blender camera up
-  // ---------------------------------------------------
-
+  // Blender camera up is +Y.
   const blenderUp =
     new THREE.Vector3(
       0,
@@ -295,12 +271,7 @@ function blenderRotationToThree(
     blenderQuaternion
   );
 
-  // ---------------------------------------------------
-  // AXIS CONVERSION ONLY
-  //
-  // NO MANNEQUIN ROTATION.
-  // ---------------------------------------------------
-
+  // Blender → Three axis conversion.
   const forward =
     new THREE.Vector3(
       blenderForward.x,
@@ -318,10 +289,7 @@ function blenderRotationToThree(
   forward.normalize();
   up.normalize();
 
-  // ---------------------------------------------------
-  // CAMERA BASIS
-  // ---------------------------------------------------
-
+  // Camera right vector.
   const right =
     new THREE.Vector3();
 
@@ -332,6 +300,7 @@ function blenderRotationToThree(
 
   right.normalize();
 
+  // Corrected up vector.
   const correctedUp =
     new THREE.Vector3();
 
@@ -342,10 +311,7 @@ function blenderRotationToThree(
 
   correctedUp.normalize();
 
-  // ---------------------------------------------------
-  // THREE CAMERA LOOKS DOWN -Z
-  // ---------------------------------------------------
-
+  // Three.js camera looks down -Z.
   const backward =
     forward
       .clone()
@@ -400,7 +366,7 @@ function createCameraState(
 }
 
 // =====================================================
-// THE 7 BLENDER CAMERAS
+// CAMERA STATES
 // =====================================================
 
 const cameraStates = [
@@ -505,6 +471,92 @@ const cameraStates = [
 ];
 
 // =====================================================
+// APPLY HERO CAMERA CORRECTION
+// =====================================================
+//
+// IMPORTANT:
+//
+// We correct the CAMERA, not the mannequin.
+//
+// 1. Move camera toward its local right.
+// 2. Rotate camera +90° around WORLD Y.
+// =====================================================
+
+function correctHeroCamera(
+  state
+) {
+  // ---------------------------------------------------
+  // MOVE CAMERA TOWARD ITS RIGHT
+  // ---------------------------------------------------
+
+  const forward =
+    new THREE.Vector3(
+      0,
+      0,
+      -1
+    );
+
+  forward.applyQuaternion(
+    state.quaternion
+  );
+
+  const up =
+    new THREE.Vector3(
+      0,
+      1,
+      0
+    );
+
+  up.applyQuaternion(
+    state.quaternion
+  );
+
+  const right =
+    new THREE.Vector3();
+
+  right.crossVectors(
+    forward,
+    up
+  );
+
+  right.normalize();
+
+  state.position.add(
+    right.multiplyScalar(
+      HERO_CAMERA_RIGHT_OFFSET
+    )
+  );
+
+  // ---------------------------------------------------
+  // ROTATE CAMERA +90° AROUND WORLD Y
+  // ---------------------------------------------------
+
+  const yaw =
+    new THREE.Quaternion();
+
+  yaw.setFromAxisAngle(
+    new THREE.Vector3(
+      0,
+      1,
+      0
+    ),
+    HERO_CAMERA_YAW
+  );
+
+  state.quaternion =
+    yaw
+      .clone()
+      .multiply(
+        state.quaternion
+      );
+}
+
+// Apply correction ONLY to Camera 1.
+correctHeroCamera(
+  cameraStates[0]
+);
+
+// =====================================================
 // CAMERA ANIMATION
 // =====================================================
 
@@ -523,7 +575,7 @@ function ease(t) {
 }
 
 // =====================================================
-// MANNEQUIN FLOAT
+// FLOAT
 // =====================================================
 
 const clock =
@@ -576,7 +628,7 @@ function animate() {
     );
 
   // ---------------------------------------------------
-  // LOCAL TRANSITION
+  // TRANSITION
   // ---------------------------------------------------
 
   const rawLocal =
