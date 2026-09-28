@@ -1,14 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-  <title>Daud Mannequin</title>
+  <title>Daud Hero</title>
+
+  <!-- IMPORTANT: This fixes "Failed to resolve module specifier 'three'" -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three":"https://cdn.jsdelivr.net/npm/three@0.163/build/three.module.js",
+      "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.163/examples/jsm/"
+    }
+  }
+  </script>
 
   <style>
-    html,
-    body {
+    html, body {
       margin: 0;
       width: 100%;
       height: 100%;
@@ -16,10 +25,13 @@
       background: transparent;
     }
 
-    #heroCanvas {
-      display: block;
+    canvas {
+      position: fixed;
+      inset: 0;
       width: 100%;
       height: 100%;
+      display: block;
+      pointer-events: none;
     }
   </style>
 </head>
