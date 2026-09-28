@@ -15,6 +15,7 @@ const renderer = new THREE.WebGLRenderer({
 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
@@ -32,7 +33,7 @@ const camera = new THREE.PerspectiveCamera(
   100
 );
 
-// THIS IS YOUR ORIGINAL HERO CAMERA
+// Initial camera position
 camera.position.set(0, 0.3, 8);
 
 // -----------------------------------------------------
@@ -56,80 +57,115 @@ scene.add(rim);
 const heroRig = new THREE.Group();
 scene.add(heroRig);
 
-let hero;
+let hero = null;
 
-new GLTFLoader().load("./DaudHero.glb", (gltf) => {
-  hero = gltf.scene;
+new GLTFLoader().load(
+  "./DaudHero.glb",
+  (gltf) => {
+    hero = gltf.scene;
 
-  hero.scale.setScalar(0.031);
-  hero.position.set(0, -2.35, 0);
-  hero.rotation.y = Math.PI;
+    hero.scale.setScalar(0.031);
+    hero.position.set(0, -2.35, 0);
+    hero.rotation.y = Math.PI;
 
-  heroRig.add(hero);
-});
+    heroRig.add(hero);
+  },
+  undefined,
+  (error) => {
+    console.error("Failed to load DaudHero.glb:", error);
+  }
+);
 
 // -----------------------------------------------------
 // SCROLL FROM FRAMER
 // -----------------------------------------------------
 
+// This is now measured in viewport-heights.
+//
+// 0 = first camera
+// 1 = second camera
+// 2 = third camera
+// ...
+// 6 = seventh camera
+
 let scrollTarget = 0;
 let scroll = 0;
 
 window.addEventListener("message", (event) => {
-  if (event.data?.type === "scroll") {
-    scrollTarget = THREE.MathUtils.clamp(event.data.progress, 0, 1);
-  }
+  if (event.data?.type !== "scroll") return;
+
+  scrollTarget = THREE.MathUtils.clamp(
+    event.data.progress,
+    0,
+    6
+  );
 });
 
 // -----------------------------------------------------
-// CAMERA ANIMATION
+// CAMERA STATES
 // -----------------------------------------------------
 
-const clock = new THREE.Clock();
-
 const cameraStates = [
-  // HERO
+  // ---------------------------------------------------
+  // 01 — HERO
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(0, 0.3, 8),
     target: new THREE.Vector3(0, -0.15, 0),
   },
 
-  // SERVICE
+  // ---------------------------------------------------
+  // 02 — SERVICE
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(-0.9, 1.1, 3.2),
     target: new THREE.Vector3(0, 0.45, 0),
   },
 
-  // ABOUT
+  // ---------------------------------------------------
+  // 03 — ABOUT
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(2.5, 0.8, -1.2),
     target: new THREE.Vector3(0, 0.8, 0),
   },
 
-  // PROJECT
+  // ---------------------------------------------------
+  // 04 — PROJECT
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(-1.1, 0.6, 1.4),
     target: new THREE.Vector3(0, 0.35, 0),
   },
 
-  // TESTIMONIALS
+  // ---------------------------------------------------
+  // 05 — TESTIMONIALS
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(2.3, 3.2, 0.6),
     target: new THREE.Vector3(0, 0.3, 0),
   },
 
-  // FAQ
+  // ---------------------------------------------------
+  // 06 — FAQ
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(-0.6, 1.3, 2.1),
     target: new THREE.Vector3(0, 0.6, 0),
   },
 
-  // CONTACT
+  // ---------------------------------------------------
+  // 07 — CONTACT
+  // ---------------------------------------------------
   {
     position: new THREE.Vector3(0, 0.45, 7.2),
     target: new THREE.Vector3(0, 0.1, 0),
   },
 ];
+
+// -----------------------------------------------------
+// CAMERA ANIMATION HELPERS
+// -----------------------------------------------------
 
 const currentTarget = new THREE.Vector3();
 
@@ -138,35 +174,86 @@ function ease(t) {
 }
 
 // -----------------------------------------------------
-// ANIMATE
+// ANIMATION
 // -----------------------------------------------------
+
+const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
 
+  // Smooth the incoming scroll
   scroll += (scrollTarget - scroll) * 0.08;
 
-  const total = cameraStates.length - 1;
+  // ---------------------------------------------------
+  // DETERMINE CURRENT CAMERA CHAPTER
+  // ---------------------------------------------------
 
-  const exact = scroll * total;
-  const index = Math.floor(exact);
-  const next = Math.min(index + 1, total);
+  const maxCameraIndex = cameraStates.length - 1;
 
-  const local = ease(exact - index);
+  const exact = THREE.MathUtils.clamp(
+    scroll,
+    0,
+    maxCameraIndex
+  );
 
-  const a = cameraStates[index];
-  const b = cameraStates[next];
+  const index = Math.min(
+    Math.floor(exact),
+    maxCameraIndex
+  );
 
-  camera.position.lerpVectors(a.position, b.position, local);
-  currentTarget.lerpVectors(a.target, b.target, local);
+  const next = Math.min(
+    index + 1,
+    maxCameraIndex
+  );
+
+  // Progress between the current camera and next camera
+  const rawLocal = exact - index;
+
+  const local = ease(rawLocal);
+
+  const currentCamera = cameraStates[index];
+  const nextCamera = cameraStates[next];
+
+  // ---------------------------------------------------
+  // INTERPOLATE CAMERA POSITION
+  // ---------------------------------------------------
+
+  camera.position.lerpVectors(
+    currentCamera.position,
+    nextCamera.position,
+    local
+  );
+
+  // ---------------------------------------------------
+  // INTERPOLATE LOOK-AT TARGET
+  // ---------------------------------------------------
+
+  currentTarget.lerpVectors(
+    currentCamera.target,
+    nextCamera.target,
+    local
+  );
+
   camera.lookAt(currentTarget);
 
-  // Floating mannequin
-  heroRig.position.y = Math.sin(clock.getElapsedTime() * 1.3) * 0.02;
+  // ---------------------------------------------------
+  // MANNEQUIN FLOAT
+  // ---------------------------------------------------
+
+  if (hero) {
+    heroRig.position.y =
+      Math.sin(clock.getElapsedTime() * 1.3) * 0.02;
+  }
+
+  // ---------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------
 
   renderer.render(scene, camera);
 }
 
+// Start animation
 animate();
 
 // -----------------------------------------------------
@@ -174,8 +261,11 @@ animate();
 // -----------------------------------------------------
 
 window.addEventListener("resize", () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  const width = window.innerWidth;
+  const height = window.innerHeight;
 
-  camera.aspect = window.innerWidth / window.innerHeight;
+  renderer.setSize(width, height);
+
+  camera.aspect = width / height;
   camera.updateProjectionMatrix();
 });
