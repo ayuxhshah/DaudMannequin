@@ -36,7 +36,7 @@ const CAMERA_SMOOTHING = 0.08;
 // HDRI
 // -----------------------------------------------------
 
-const HDRI_INTENSITY = 0.35;
+const HDRI_INTENSITY = 1.0;
 
 // -----------------------------------------------------
 // AREA 1 — LARGE TOP / KEY
@@ -68,7 +68,7 @@ const AREA_1 = {
   // intensity rather than directly converting the
   // Blender wattage.
 
-  intensity: 4.0,
+   intensity: 25.0,
 
   width: 300,
   height: 300,
@@ -96,7 +96,7 @@ const AREA_2 = {
     z: -210.82,
   },
 
-  intensity: 2.0,
+  intensity: 10.0,
 
   width: 153,
   height: 153,
@@ -124,7 +124,7 @@ const AREA_3 = {
     z: -359.53,
   },
 
-  intensity: 2.5,
+  intensity: 12.0,
 
   width: 250,
   height: 250,
@@ -166,7 +166,7 @@ renderer.outputColorSpace =
 renderer.toneMapping =
   THREE.ACESFilmicToneMapping;
 
-renderer.toneMappingExposure = 1;
+renderer.toneMappingExposure = 1.1;
 
 // =====================================================
 // SCENE
@@ -398,8 +398,8 @@ const area3 =
 const softFill =
   new THREE.HemisphereLight(
     0xffffff,
-    0x111111,
-    0.12
+    0x222222,
+    0.35
   );
 
 scene.add(
