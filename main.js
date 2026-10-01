@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { EXRLoader } from "three/addons/loaders/EXRLoader.js";
 
 // =====================================================
 // CONFIG
@@ -8,12 +9,126 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 const GLB_FILE =
   "./DaudHeroWithCameras.glb";
 
+const HDRI_FILE =
+  "./studio_small_05_4k.exr";
+
 const CAMERA_COUNT = 7;
 
-// How smoothly the camera follows Framer scroll.
-// Lower = smoother/slower.
-// Higher = faster/snappier.
 const CAMERA_SMOOTHING = 0.08;
+
+// =====================================================
+// LIGHTING CONFIG
+// =====================================================
+//
+// These are based on your Blender studio setup.
+//
+// Blender coordinates:
+// X = X
+// Y = -Z
+// Z = Y
+//
+// Since the GLB already comes through the glTF
+// coordinate conversion, we use the same conversion
+// for the external Blender light positions.
+//
+
+// -----------------------------------------------------
+// HDRI
+// -----------------------------------------------------
+
+const HDRI_INTENSITY = 0.35;
+
+// -----------------------------------------------------
+// AREA 1 — LARGE TOP / KEY
+// -----------------------------------------------------
+
+const AREA_1 = {
+  position: {
+    x: -2.3778,
+    y: 276.22,
+    z: 9.2933,
+  },
+
+  // Blender:
+  // Rotation X = 0
+  // Rotation Y = 0
+  // Rotation Z = -90
+  rotation: {
+    x: 0,
+    y: 0,
+    z: -90,
+  },
+
+  // Blender:
+  // Power 1000 W
+  // Exposure 10.5
+  // Size 300m
+  //
+  // We intentionally use a normalized Three.js
+  // intensity rather than directly converting the
+  // Blender wattage.
+
+  intensity: 4.0,
+
+  width: 300,
+  height: 300,
+};
+
+// -----------------------------------------------------
+// AREA 2 — SIDE / FILL
+// -----------------------------------------------------
+
+const AREA_2 = {
+  position: {
+    x: 105.36,
+    y: 93.377,
+    z: -181.51,
+  },
+
+  // Blender:
+  // X = 90
+  // Y = 0
+  // Z = -210.82
+
+  rotation: {
+    x: 90,
+    y: 0,
+    z: -210.82,
+  },
+
+  intensity: 2.0,
+
+  width: 153,
+  height: 153,
+};
+
+// -----------------------------------------------------
+// AREA 3 — OPPOSITE SIDE / RIM
+// -----------------------------------------------------
+
+const AREA_3 = {
+  position: {
+    x: -2.4176,
+    y: 91.807,
+    z: 194.19,
+  },
+
+  // Blender:
+  // X = 90
+  // Y = 0
+  // Z = -359.53
+
+  rotation: {
+    x: 90,
+    y: 0,
+    z: -359.53,
+  },
+
+  intensity: 2.5,
+
+  width: 250,
+  height: 250,
+};
 
 // =====================================================
 // CANVAS
@@ -61,20 +176,15 @@ const scene =
   new THREE.Scene();
 
 // =====================================================
-// RENDER CAMERA
+// CAMERA
 // =====================================================
 //
-// IMPORTANT:
+// This is the render camera.
 //
-// This is NOT one of the Blender cameras.
+// The seven Blender cameras are loaded from the GLB
+// and used as source states.
 //
-// The Blender cameras are used as source states.
-//
-// This camera is the camera that Three.js actually
-// renders through.
-//
-// Its transform is continuously interpolated between
-// the seven Blender cameras.
+// DO NOT CHANGE THIS SYSTEM.
 //
 
 const renderCamera =
@@ -91,54 +201,209 @@ scene.add(
 );
 
 // =====================================================
-// LIGHTS
-// =====================================================
-//
-// Keep these because the GLB may not contain the exact
-// lighting from Blender's viewport/render setup.
-//
+// HDRI ENVIRONMENT
 // =====================================================
 
-const ambient =
-  new THREE.AmbientLight(
+const pmremGenerator =
+  new THREE.PMREMGenerator(
+    renderer
+  );
+
+pmremGenerator.compileEquirectangularShader();
+
+const exrLoader =
+  new EXRLoader();
+
+exrLoader.load(
+
+  HDRI_FILE,
+
+  (texture) => {
+
+    console.log(
+      "Studio HDRI loaded."
+    );
+
+    // -------------------------------------------------
+    // Convert HDRI into a PMREM environment map.
+    // -------------------------------------------------
+
+    const environmentMap =
+      pmremGenerator.fromEquirectangular(
+        texture
+      ).texture;
+
+    scene.environment =
+      environmentMap;
+
+    // -------------------------------------------------
+    // HDRI STRENGTH
+    // -------------------------------------------------
+
+    scene.environmentIntensity =
+      HDRI_INTENSITY;
+
+    // We want the HDRI to LIGHT the mannequin,
+    // not appear as the website background.
+
+    texture.dispose();
+
+    pmremGenerator.dispose();
+
+  },
+
+  undefined,
+
+  (error) => {
+
+    console.error(
+      "Failed to load studio HDRI:",
+      error
+    );
+
+  }
+);
+
+// =====================================================
+// STUDIO AREA LIGHT HELPER
+// =====================================================
+
+function createStudioAreaLight(
+  config
+) {
+
+  const light =
+    new THREE.RectAreaLight(
+      0xffffff,
+      config.intensity,
+      config.width,
+      config.height
+    );
+
+  // ---------------------------------------------------
+  // POSITION
+  // ---------------------------------------------------
+
+  light.position.set(
+    config.position.x,
+    config.position.y,
+    config.position.z
+  );
+
+  // ---------------------------------------------------
+  // ROTATION
+  // ---------------------------------------------------
+  //
+  // Blender and Three.js use different coordinate
+  // systems.
+  //
+  // Rather than directly copying Euler angles,
+  // we convert the Blender rotation basis.
+  //
+
+  const blenderEuler =
+    new THREE.Euler(
+      THREE.MathUtils.degToRad(
+        config.rotation.x
+      ),
+      THREE.MathUtils.degToRad(
+        config.rotation.y
+      ),
+      THREE.MathUtils.degToRad(
+        config.rotation.z
+      ),
+      "XYZ"
+    );
+
+  const blenderQuaternion =
+    new THREE.Quaternion();
+
+  blenderQuaternion.setFromEuler(
+    blenderEuler
+  );
+
+  // Blender local -Z is treated as the direction
+  // the area light faces.
+
+  const blenderForward =
+    new THREE.Vector3(
+      0,
+      0,
+      -1
+    );
+
+  blenderForward.applyQuaternion(
+    blenderQuaternion
+  );
+
+  // Blender → Three coordinate conversion.
+
+  const forward =
+    new THREE.Vector3(
+      blenderForward.x,
+      blenderForward.z,
+      -blenderForward.y
+    ).normalize();
+
+  // Area lights in Three.js face local -Z.
+  //
+  // Build a quaternion whose -Z points along the
+  // converted Blender direction.
+
+  const target =
+    light.position
+      .clone()
+      .add(forward);
+
+  light.lookAt(
+    target
+  );
+
+  scene.add(
+    light
+  );
+
+  return light;
+}
+
+// =====================================================
+// CREATE STUDIO LIGHTS
+// =====================================================
+
+const area1 =
+  createStudioAreaLight(
+    AREA_1
+  );
+
+const area2 =
+  createStudioAreaLight(
+    AREA_2
+  );
+
+const area3 =
+  createStudioAreaLight(
+    AREA_3
+  );
+
+// =====================================================
+// VERY SOFT BASE FILL
+// =====================================================
+//
+// The Blender HDRI + large area lights should do most
+// of the work.
+//
+// This is intentionally subtle.
+//
+
+const softFill =
+  new THREE.HemisphereLight(
     0xffffff,
-    1
+    0x111111,
+    0.12
   );
 
 scene.add(
-  ambient
-);
-
-const key =
-  new THREE.DirectionalLight(
-    0xffffff,
-    2.5
-  );
-
-key.position.set(
-  5,
-  5,
-  5
-);
-
-scene.add(
-  key
-);
-
-const rim =
-  new THREE.DirectionalLight(
-    0xff8ad8,
-    1.2
-  );
-
-rim.position.set(
-  -5,
-  3,
-  -5
-);
-
-scene.add(
-  rim
+  softFill
 );
 
 // =====================================================
@@ -150,7 +415,7 @@ let scrollTarget = 0;
 let scroll = 0;
 
 // =====================================================
-// RECEIVE SCROLL FROM FRAMER
+// FRAMER → THREE SCROLL
 // =====================================================
 
 window.addEventListener(
@@ -181,9 +446,7 @@ window.addEventListener(
 
 const cameraStates = [];
 
-// =====================================================
-// TEMPORARY OBJECTS USED DURING EXTRACTION
-// =====================================================
+// Temporary extraction objects.
 
 const tempPosition =
   new THREE.Vector3();
@@ -192,7 +455,7 @@ const tempQuaternion =
   new THREE.Quaternion();
 
 // =====================================================
-// LOAD GLB
+// GLB LOADER
 // =====================================================
 
 const loader =
@@ -217,17 +480,17 @@ loader.load(
     );
 
     // -------------------------------------------------
-    // ADD THE ENTIRE BLENDER SCENE
+    // ADD COMPLETE BLENDER SCENE
     // -------------------------------------------------
     //
-    // THIS IS CRITICAL.
+    // IMPORTANT:
     //
-    // We do NOT scale it.
-    // We do NOT rotate it.
-    // We do NOT reposition it.
+    // NO SCALE
+    // NO POSITION
+    // NO ROTATION
     //
-    // The mannequin and cameras stay exactly as
-    // Blender exported them.
+    // The mannequin + cameras remain exactly as
+    // exported from Blender.
     //
 
     scene.add(
@@ -237,30 +500,17 @@ loader.load(
     // -------------------------------------------------
     // UPDATE WORLD MATRICES
     // -------------------------------------------------
-    //
-    // We need the final world-space transform of each
-    // Blender camera.
-    //
 
     gltf.scene.updateMatrixWorld(
       true
     );
 
     // -------------------------------------------------
-    // FIND THE 7 CAMERAS
+    // GET CAMERAS
     // -------------------------------------------------
 
-    let blenderCameras = [];
-
-    if (
-      gltf.cameras &&
-      gltf.cameras.length > 0
-    ) {
-
-      blenderCameras =
-        gltf.cameras;
-
-    }
+    const blenderCameras =
+      gltf.cameras || [];
 
     console.log(
       "Cameras found:",
@@ -268,22 +518,8 @@ loader.load(
     );
 
     // -------------------------------------------------
-    // SORT CAMERAS BY NAME
+    // CAMERA ORDER
     // -------------------------------------------------
-    //
-    // This makes the order deterministic regardless of
-    // how Blender/glTF happens to store the nodes.
-    //
-    // Expected:
-    //
-    // Camera_Hero
-    // Camera_Service
-    // Camera_About
-    // Camera_Project
-    // Camera_Testimonials
-    // Camera_FAQ
-    // Camera_Contact
-    //
 
     const cameraOrder = [
       "Camera_Hero",
@@ -299,7 +535,8 @@ loader.load(
 
     for (
       let i = 0;
-      i < cameraOrder.length;
+      i <
+      cameraOrder.length;
       i++
     ) {
 
@@ -326,11 +563,6 @@ loader.load(
     // -------------------------------------------------
     // FALLBACK
     // -------------------------------------------------
-    //
-    // If a camera name somehow changed during export,
-    // use the GLB camera order instead of completely
-    // failing.
-    //
 
     if (
       orderedCameras.length !==
@@ -338,11 +570,11 @@ loader.load(
     ) {
 
       console.warn(
-        "Named camera lookup did not find all 7 cameras."
+        "Could not find all named cameras."
       );
 
       console.warn(
-        "Falling back to GLB camera order."
+        "Using GLB camera order."
       );
 
       orderedCameras.length = 0;
@@ -366,33 +598,7 @@ loader.load(
     }
 
     // -------------------------------------------------
-    // VERIFY
-    // -------------------------------------------------
-
-    console.log(
-      "===================================="
-    );
-
-    console.log(
-      "FINAL CAMERA ORDER"
-    );
-
-    console.log(
-      "===================================="
-    );
-
-    orderedCameras.forEach(
-      (camera, index) => {
-
-        console.log(
-          `${index + 1}: ${camera.name}`
-        );
-
-      }
-    );
-
-    // -------------------------------------------------
-    // EXTRACT CAMERA WORLD TRANSFORMS
+    // EXTRACT CAMERA STATES
     // -------------------------------------------------
 
     cameraStates.length = 0;
@@ -407,27 +613,18 @@ loader.load(
       const sourceCamera =
         orderedCameras[i];
 
-      // Make absolutely sure its world matrix is
-      // current.
-
       sourceCamera.updateWorldMatrix(
         true,
         false
       );
 
-      // World position
       sourceCamera.getWorldPosition(
         tempPosition
       );
 
-      // World rotation
       sourceCamera.getWorldQuaternion(
         tempQuaternion
       );
-
-      // -------------------------------------------------
-      // SAVE IMMUTABLE CAMERA STATE
-      // -------------------------------------------------
 
       const state = {
 
@@ -456,79 +653,46 @@ loader.load(
       );
 
       console.log(
-        `Camera ${i + 1}:`,
-        state.name
-      );
-
-      console.log(
-        "Position:",
-        state.position
-      );
-
-      console.log(
-        "Quaternion:",
-        state.quaternion
-      );
-
-      console.log(
-        "FOV:",
-        state.fov
+        `Camera ${i + 1}: ${state.name}`
       );
 
     }
 
     // -------------------------------------------------
-    // VERIFY CAMERA COUNT
+    // INITIAL CAMERA
     // -------------------------------------------------
 
     if (
-      cameraStates.length === 0
+      cameraStates.length > 0
     ) {
 
-      console.error(
-        "NO CAMERAS FOUND IN GLB."
+      const firstCamera =
+        cameraStates[0];
+
+      renderCamera.position.copy(
+        firstCamera.position
       );
 
-      return;
+      renderCamera.quaternion.copy(
+        firstCamera.quaternion
+      );
+
+      renderCamera.fov =
+        firstCamera.fov;
+
+      renderCamera.near =
+        firstCamera.near;
+
+      renderCamera.far =
+        firstCamera.far;
+
+      renderCamera.aspect =
+        window.innerWidth /
+        window.innerHeight;
+
+      renderCamera.updateProjectionMatrix();
 
     }
-
-    // -------------------------------------------------
-    // INITIALIZE RENDER CAMERA
-    // -------------------------------------------------
-    //
-    // Start exactly on Camera 1.
-    //
-
-    const firstCamera =
-      cameraStates[0];
-
-    renderCamera.position.copy(
-      firstCamera.position
-    );
-
-    renderCamera.quaternion.copy(
-      firstCamera.quaternion
-    );
-
-    renderCamera.fov =
-      firstCamera.fov;
-
-    renderCamera.near =
-      firstCamera.near;
-
-    renderCamera.far =
-      firstCamera.far;
-
-    renderCamera.aspect =
-      window.innerWidth /
-      window.innerHeight;
-
-    renderCamera.updateProjectionMatrix();
-
-    // -------------------------------------------------
-    // READY
-    // -------------------------------------------------
 
     console.log(
       "===================================="
@@ -539,17 +703,14 @@ loader.load(
     );
 
     console.log(
-      `Using ${cameraStates.length} Blender cameras.`
-    );
-
-    console.log(
       "===================================="
+
     );
 
   },
 
   // ===================================================
-  // LOADING PROGRESS
+  // PROGRESS
   // ===================================================
 
   (progress) => {
@@ -580,26 +741,15 @@ loader.load(
   (error) => {
 
     console.error(
-      "===================================="
-    );
-
-    console.error(
-      "FAILED TO LOAD GLB"
-    );
-
-    console.error(
+      "Failed to load GLB:",
       error
-    );
-
-    console.error(
-      "===================================="
     );
 
   }
 );
 
 // =====================================================
-// INTERPOLATION HELPERS
+// CAMERA INTERPOLATION
 // =====================================================
 
 const currentPosition =
@@ -623,7 +773,7 @@ function easeInOut(
 }
 
 // =====================================================
-// ANIMATION LOOP
+// ANIMATION
 // =====================================================
 
 function animate() {
@@ -644,7 +794,7 @@ function animate() {
     CAMERA_SMOOTHING;
 
   // ---------------------------------------------------
-  // WAIT UNTIL GLB CAMERAS ARE READY
+  // WAIT FOR CAMERAS
   // ---------------------------------------------------
 
   if (
@@ -656,7 +806,7 @@ function animate() {
   }
 
   // ---------------------------------------------------
-  // CALCULATE CURRENT CAMERA INTERVAL
+  // CAMERA INTERVAL
   // ---------------------------------------------------
 
   const maxIndex =
@@ -681,10 +831,6 @@ function animate() {
       maxIndex
     );
 
-  // ---------------------------------------------------
-  // LOCAL PROGRESS BETWEEN TWO CAMERAS
-  // ---------------------------------------------------
-
   const rawProgress =
     exact - index;
 
@@ -700,7 +846,7 @@ function animate() {
     cameraStates[next];
 
   // ---------------------------------------------------
-  // POSITION INTERPOLATION
+  // POSITION
   // ---------------------------------------------------
 
   currentPosition.lerpVectors(
@@ -714,12 +860,8 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // ROTATION INTERPOLATION
+  // ROTATION
   // ---------------------------------------------------
-  //
-  // Quaternion slerp prevents weird Euler-angle
-  // flipping during transitions.
-  //
 
   currentQuaternion.slerpQuaternions(
     currentCamera.quaternion,
@@ -732,7 +874,7 @@ function animate() {
   );
 
   // ---------------------------------------------------
-  // CAMERA PROJECTION
+  // PROJECTION
   // ---------------------------------------------------
 
   renderCamera.fov =
@@ -798,17 +940,11 @@ window.addEventListener(
       height
     );
 
-    if (
-      renderCamera
-    ) {
+    renderCamera.aspect =
+      width /
+      height;
 
-      renderCamera.aspect =
-        width /
-        height;
-
-      renderCamera.updateProjectionMatrix();
-
-    }
+    renderCamera.updateProjectionMatrix();
 
   }
 );
