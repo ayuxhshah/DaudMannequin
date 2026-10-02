@@ -1,5 +1,7 @@
 import * as THREE from "three"
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"
+import { EXRLoader } from "three/addons/loaders/EXRLoader.js"
+import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js"
 
 /* =========================================================
    BASIC SETUP
@@ -23,10 +25,185 @@ renderer.setSize(
 )
 
 renderer.outputColorSpace = THREE.SRGBColorSpace
-renderer.toneMapping = THREE.ACESFilmicToneMapping
-renderer.toneMappingExposure = 1
+
+renderer.toneMapping =
+    THREE.ACESFilmicToneMapping
+
+renderer.toneMappingExposure = 1.0
+
+/* =========================================================
+   SCENE
+========================================================= */
 
 const scene = new THREE.Scene()
+
+/*
+    Keep the background transparent.
+    The HDRI is used for lighting only.
+*/
+
+scene.background = null
+
+/* =========================================================
+   RECT AREA LIGHT SUPPORT
+========================================================= */
+
+RectAreaLightUniformsLib.init()
+
+/* =========================================================
+   WEBGL LIGHTING
+========================================================= */
+
+/*
+    We are intentionally NOT using:
+
+    - lightMap
+    - baked lighting
+    - Mannequin_Lightmap.png
+
+    Everything below is real-time WebGL lighting.
+*/
+
+/* ---------------------------------------------------------
+   SOFT KEY
+--------------------------------------------------------- */
+
+const keyLight = new THREE.RectAreaLight(
+    0xffffff,
+    8,
+    300,
+    300
+)
+
+keyLight.position.set(
+    -120,
+    220,
+    180
+)
+
+keyLight.lookAt(
+    0,
+    80,
+    0
+)
+
+scene.add(keyLight)
+
+/* ---------------------------------------------------------
+   SOFT FRONT / FILL
+--------------------------------------------------------- */
+
+const fillLight = new THREE.RectAreaLight(
+    0xffffff,
+    4,
+    250,
+    250
+)
+
+fillLight.position.set(
+    120,
+    130,
+    180
+)
+
+fillLight.lookAt(
+    0,
+    70,
+    0
+)
+
+scene.add(fillLight)
+
+/* ---------------------------------------------------------
+   SOFT BACK / RIM
+--------------------------------------------------------- */
+
+const rimLight = new THREE.RectAreaLight(
+    0xffffff,
+    3,
+    250,
+    250
+)
+
+rimLight.position.set(
+    -100,
+    180,
+    -180
+)
+
+rimLight.lookAt(
+    0,
+    90,
+    0
+)
+
+scene.add(rimLight)
+
+/* ---------------------------------------------------------
+   VERY SOFT AMBIENT FILL
+--------------------------------------------------------- */
+
+const ambientLight =
+    new THREE.HemisphereLight(
+        0xffffff,
+        0x303030,
+        0.35
+    )
+
+scene.add(ambientLight)
+
+/* =========================================================
+   HDRI ENVIRONMENT
+========================================================= */
+
+const pmremGenerator =
+    new THREE.PMREMGenerator(renderer)
+
+pmremGenerator.compileEquirectangularShader()
+
+const exrLoader =
+    new EXRLoader()
+
+exrLoader.load(
+    "./studio_small_05_4k.exr",
+
+    (exrTexture) => {
+        console.log(
+            "HDRI loaded successfully"
+        )
+
+        exrTexture.mapping =
+            THREE.EquirectangularReflectionMapping
+
+        const environmentMap =
+            pmremGenerator.fromEquirectangular(
+                exrTexture
+            ).texture
+
+        scene.environment =
+            environmentMap
+
+        /*
+            We don't want the HDRI visible
+            behind the mannequin.
+        */
+
+        scene.background = null
+
+        exrTexture.dispose()
+
+        pmremGenerator.dispose()
+    },
+
+    undefined,
+
+    (error) => {
+        console.error(
+            "Failed to load studio HDRI:",
+            error
+        )
+    }
+)
 
 /* =========================================================
    CAMERA SYSTEM
@@ -43,82 +220,18 @@ const cameraOrder = [
     "Camera_Contact",
 ]
 
-const renderCamera = new THREE.PerspectiveCamera(
-    35,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    5000
-)
+const renderCamera =
+    new THREE.PerspectiveCamera(
+        35,
+        window.innerWidth /
+            window.innerHeight,
+        0.1,
+        5000
+    )
 
 let cameraStates = []
+
 let scrollProgress = 0
-
-/* =========================================================
-   TEMP CAMERAS / LIGHTING
-========================================================= */
-
-// Soft lighting for the non-baked parts of the model.
-// The mannequin body itself will use the baked lightmap.
-
-const hemiLight = new THREE.HemisphereLight(
-    0xffffff,
-    0x222222,
-    0.8
-)
-
-scene.add(hemiLight)
-
-const keyLight = new THREE.DirectionalLight(
-    0xffffff,
-    1.0
-)
-
-keyLight.position.set(
-    200,
-    300,
-    200
-)
-
-scene.add(keyLight)
-
-const fillLight = new THREE.DirectionalLight(
-    0xffffff,
-    0.35
-)
-
-fillLight.position.set(
-    -200,
-    150,
-    -100
-)
-
-scene.add(fillLight)
-
-/* =========================================================
-   LOAD LIGHTMAP
-========================================================= */
-
-const textureLoader = new THREE.TextureLoader()
-
-const lightmapTexture = textureLoader.load(
-    "./Mannequin_Lightmap.png",
-    () => {
-        console.log("Lightmap loaded")
-    },
-    undefined,
-    (error) => {
-        console.error(
-            "Failed to load Mannequin_Lightmap.png",
-            error
-        )
-    }
-)
-
-// Lightmap is baked lighting data, NOT a color texture.
-lightmapTexture.colorSpace =
-    THREE.LinearSRGBColorSpace
-
-lightmapTexture.flipY = false
 
 /* =========================================================
    LOAD GLTF
@@ -130,7 +243,9 @@ loader.load(
     "./DaudHeroWithCameras_WebGL.gltf",
 
     (gltf) => {
-        console.log("GLTF loaded")
+        console.log(
+            "GLTF loaded"
+        )
 
         /* -------------------------------------------------
            ADD MODEL
@@ -139,150 +254,141 @@ loader.load(
         scene.add(gltf.scene)
 
         /* -------------------------------------------------
-           BODY LIGHTMAP
+           MATERIAL SETUP
         ------------------------------------------------- */
 
-        let bakedBodyFound = false
-
-        gltf.scene.traverse((object) => {
-            if (!object.isMesh) {
-                return
-            }
-
-            const meshName =
-                object.name?.toLowerCase() || ""
-
-            const materialName =
-                object.material?.name?.toLowerCase() || ""
-
-            const isBody =
-                meshName.includes("mannequin_bod") ||
-                materialName.includes("oil paint")
-
-            if (!isBody) {
-                return
-            }
-
-            console.log(
-                "Body mesh found:",
-                object.name
-            )
-
-            /* ---------------------------------------------
-               VERIFY SECOND UV
-            --------------------------------------------- */
-
-            const uv1 =
-                object.geometry.getAttribute("uv1")
-
-            if (!uv1) {
-                console.warn(
-                    "Body mesh does NOT have uv1 / LightmapUV:",
-                    object.name
-                )
-
-                return
-            }
-
-            console.log(
-                "Body has LightmapUV / uv1"
-            )
-
-            /* ---------------------------------------------
-               APPLY BAKED LIGHTMAP
-            --------------------------------------------- */
-
-            const materials = Array.isArray(
-                object.material
-            )
-                ? object.material
-                : [object.material]
-
-            materials.forEach((material) => {
-                if (!material) {
+        gltf.scene.traverse(
+            (object) => {
+                if (!object.isMesh) {
                     return
                 }
 
-                material.lightMap =
-                    lightmapTexture
+                const materials =
+                    Array.isArray(
+                        object.material
+                    )
+                        ? object.material
+                        : [
+                              object.material,
+                          ]
 
-                material.lightMapIntensity = 0
+                materials.forEach(
+                    (material) => {
+                        if (!material) {
+                            return
+                        }
 
-                material.needsUpdate = true
+                        /*
+                            Completely remove
+                            baked lightmap usage.
+                        */
 
-                console.log(
-                    "Lightmap applied to:",
-                    material.name
+                        material.lightMap =
+                            null
+
+                        material.lightMapIntensity =
+                            0
+
+                        /*
+                            Let the HDRI contribute
+                            to the PBR material.
+                        */
+
+                        if (
+                            "envMapIntensity" in
+                            material
+                        ) {
+                            material.envMapIntensity =
+                                0.8
+                        }
+
+                        /*
+                            Make sure Three.js
+                            recompiles the material.
+                        */
+
+                        material.needsUpdate =
+                            true
+                    }
                 )
-            })
+            }
+        )
 
-            bakedBodyFound = true
-        })
+        console.log(
+            "Real-time WebGL lighting enabled"
+        )
 
-        if (!bakedBodyFound) {
-            console.warn(
-                "WARNING: Could not find mannequin body for lightmap."
-            )
-        }
-
-        /* -------------------------------------------------
+        /* =================================================
            CAMERA EXTRACTION
-           THIS IS THE WORKING CAMERA SYSTEM
-        ------------------------------------------------- */
+        ================================================= */
 
-        cameraStates = cameraOrder
-            .map((cameraName) => {
-                const camera =
-                    gltf.cameras.find(
-                        (cam) =>
-                            cam.name === cameraName
-                    )
+        cameraStates =
+            cameraOrder
+                .map(
+                    (cameraName) => {
+                        const camera =
+                            gltf.cameras.find(
+                                (cam) =>
+                                    cam.name ===
+                                    cameraName
+                            )
 
-                if (!camera) {
-                    console.error(
-                        `Camera not found: ${cameraName}`
-                    )
+                        if (!camera) {
+                            console.error(
+                                `Camera not found: ${cameraName}`
+                            )
 
-                    return null
-                }
+                            return null
+                        }
 
-                const position =
-                    new THREE.Vector3()
+                        const position =
+                            new THREE.Vector3()
 
-                const quaternion =
-                    new THREE.Quaternion()
+                        const quaternion =
+                            new THREE.Quaternion()
 
-                camera.getWorldPosition(
-                    position
+                        camera.getWorldPosition(
+                            position
+                        )
+
+                        camera.getWorldQuaternion(
+                            quaternion
+                        )
+
+                        return {
+                            name:
+                                camera.name,
+
+                            position,
+
+                            quaternion,
+
+                            fov:
+                                camera.fov,
+
+                            near:
+                                camera.near,
+
+                            far:
+                                camera.far,
+                        }
+                    }
                 )
-
-                camera.getWorldQuaternion(
-                    quaternion
-                )
-
-                return {
-                    name: camera.name,
-
-                    position,
-                    quaternion,
-
-                    fov: camera.fov,
-                    near: camera.near,
-                    far: camera.far,
-                }
-            })
-            .filter(Boolean)
+                .filter(Boolean)
 
         console.log(
             "Camera states:",
             cameraStates
         )
 
-        /* -------------------------------------------------
+        /* =================================================
            INITIAL CAMERA
-        ------------------------------------------------- */
+        ================================================= */
 
-        if (cameraStates.length > 0) {
+        if (
+            cameraStates.length >
+            0
+        ) {
             renderCamera.position.copy(
                 cameraStates[0].position
             )
@@ -303,11 +409,13 @@ loader.load(
             renderCamera.updateProjectionMatrix()
         }
 
-        /* -------------------------------------------------
-           INITIAL SCROLL STATE
-        ------------------------------------------------- */
+        /* =================================================
+           INITIAL SCROLL
+        ================================================= */
 
-        updateCamera(scrollProgress)
+        updateCamera(
+            scrollProgress
+        )
 
         console.log(
             "Daud mannequin ready."
@@ -318,7 +426,7 @@ loader.load(
 
     (error) => {
         console.error(
-            "Failed to load DaudHeroWithCameras_WebGL.gltf",
+            "Failed to load GLTF:",
             error
         )
     }
@@ -329,8 +437,13 @@ loader.load(
    DO NOT CHANGE
 ========================================================= */
 
-function updateCamera(progress) {
-    if (cameraStates.length === 0) {
+function updateCamera(
+    progress
+) {
+    if (
+        cameraStates.length ===
+        0
+    ) {
         return
     }
 
@@ -340,11 +453,16 @@ function updateCamera(progress) {
     const clampedProgress =
         Math.max(
             0,
-            Math.min(progress, maxProgress)
+            Math.min(
+                progress,
+                maxProgress
+            )
         )
 
     const index =
-        Math.floor(clampedProgress)
+        Math.floor(
+            clampedProgress
+        )
 
     const nextIndex =
         Math.min(
@@ -353,7 +471,8 @@ function updateCamera(progress) {
         )
 
     const t =
-        clampedProgress - index
+        clampedProgress -
+        index
 
     const current =
         cameraStates[index]
@@ -420,7 +539,10 @@ window.addEventListener(
             return
         }
 
-        if (event.data.type !== "scroll") {
+        if (
+            event.data.type !==
+            "scroll"
+        ) {
             return
         }
 
@@ -436,13 +558,17 @@ window.addEventListener(
                 0,
                 Math.min(
                     event.data.progress,
-                    cameraStates.length > 0
-                        ? cameraStates.length - 1
+                    cameraStates.length >
+                        0
+                        ? cameraStates.length -
+                              1
                         : 6
                 )
             )
 
-        updateCamera(scrollProgress)
+        updateCamera(
+            scrollProgress
+        )
     }
 )
 
@@ -485,7 +611,9 @@ window.addEventListener(
 ========================================================= */
 
 function animate() {
-    requestAnimationFrame(animate)
+    requestAnimationFrame(
+        animate
+    )
 
     renderer.render(
         scene,
