@@ -29,7 +29,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace
 renderer.toneMapping =
     THREE.ACESFilmicToneMapping
 
-renderer.toneMappingExposure = 1.0
+renderer.toneMappingExposure = 0.65
 
 /* =========================================================
    SCENE
@@ -70,7 +70,7 @@ RectAreaLightUniformsLib.init()
 
 const keyLight = new THREE.RectAreaLight(
     0xffffff,
-    8,
+    2.5,
     300,
     300
 )
@@ -95,7 +95,7 @@ scene.add(keyLight)
 
 const fillLight = new THREE.RectAreaLight(
     0xffffff,
-    4,
+    0.8,
     250,
     250
 )
@@ -120,7 +120,7 @@ scene.add(fillLight)
 
 const rimLight = new THREE.RectAreaLight(
     0xffffff,
-    3,
+    1,
     250,
     250
 )
@@ -146,8 +146,8 @@ scene.add(rimLight)
 const ambientLight =
     new THREE.HemisphereLight(
         0xffffff,
-        0x303030,
-        0.35
+        0x181818,
+        0.12
     )
 
 scene.add(ambientLight)
