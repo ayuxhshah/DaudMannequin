@@ -206,7 +206,7 @@ loader.load(
                 material.lightMap =
                     lightmapTexture
 
-                material.lightMapIntensity = 1.0
+                material.lightMapIntensity = 0.35
 
                 material.needsUpdate = true
 
