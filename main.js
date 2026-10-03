@@ -95,7 +95,7 @@ scene.add(keyLight)
 
 const fillLight = new THREE.RectAreaLight(
     0xffffff,
-    1.3,
+    1.5,
     250,
     250
 )
@@ -120,7 +120,7 @@ scene.add(fillLight)
 
 const rimLight = new THREE.RectAreaLight(
     0xffffff,
-    2,
+    2.5,
     300,
     300
 )
