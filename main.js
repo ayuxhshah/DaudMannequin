@@ -71,14 +71,14 @@ RectAreaLightUniformsLib.init()
 const keyLight = new THREE.RectAreaLight(
     0xffffff,
     2.5,
-    350,
-    350
+    300,
+    300
 )
 
 keyLight.position.set(
-    -150,
-    260,
-    130
+    -120,
+    220,
+    180
 )
 
 keyLight.lookAt(
@@ -95,15 +95,15 @@ scene.add(keyLight)
 
 const fillLight = new THREE.RectAreaLight(
     0xffffff,
-    1.6,
+    1.3,
     250,
     250
 )
 
 fillLight.position.set(
-    160,
     120,
-    120
+    130,
+    180
 )
 
 fillLight.lookAt(
@@ -120,15 +120,15 @@ scene.add(fillLight)
 
 const rimLight = new THREE.RectAreaLight(
     0xffffff,
-    1.3,
+    1.8,
     250,
     250
 )
 
 rimLight.position.set(
-    -140,
-    250,
-    -220
+    -100,
+    180,
+    -180
 )
 
 rimLight.lookAt(
