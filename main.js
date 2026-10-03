@@ -70,9 +70,9 @@ RectAreaLightUniformsLib.init()
 
 const keyLight = new THREE.RectAreaLight(
     0xffffff,
-    2.5,
-    300,
-    300
+    2.1,
+    450,
+    450
 )
 
 keyLight.position.set(
@@ -120,9 +120,9 @@ scene.add(fillLight)
 
 const rimLight = new THREE.RectAreaLight(
     0xffffff,
-    1.8,
-    250,
-    250
+    2,
+    300,
+    300
 )
 
 rimLight.position.set(
