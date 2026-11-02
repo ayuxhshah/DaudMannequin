@@ -192,6 +192,14 @@ const INTRO = {
     // false = once per page load
     // true  = once per browser tab session (skips on reload)
     oncePerSession: false,
+
+    // When embedded in Framer, wait for the preloader to say
+    // "start" before playing. Opened directly (not in an
+    // iframe) it plays as soon as it's ready.
+    waitForPreloader: true,
+    // safety net: if no start signal arrives this many
+    // seconds after the 3D is ready, play anyway
+    startSignalTimeout: 20,
 }
 
 const introParam =
@@ -334,12 +342,120 @@ function applyRevealShader(material) {
 
 const intro = {
     ready: { gltf: false, hdri: false },
+    preparing: false,
+    prepared: false, // loaded + compiled + on the GPU
+    startRequested: false, // preloader said "start"
     started: false,
     done: introSkip,
     startTime: 0,
     focus: new THREE.Vector3(),
     minY: 0,
     maxY: 1,
+    progress: 0,
+}
+
+/* ---------------------------------------------------------
+   PRELOADER ↔ 3D HANDSHAKE  (postMessage with Framer)
+
+   3D → Framer:  daud3d:progress {value 0–1}
+                 daud3d:ready     everything loaded + warmed up
+                 daud3d:started   intro is playing
+                 daud3d:introDone intro finished
+   Framer → 3D:  daud3d:ping      "are you ready?"
+                 daud3d:start     "play the intro now"
+--------------------------------------------------------- */
+
+const isEmbedded = window.parent !== window
+
+const waitForStart =
+    INTRO.waitForPreloader &&
+    isEmbedded &&
+    introParam === null // debug URLs never wait
+
+function postToParent(message) {
+    if (!isEmbedded) return
+    try {
+        window.parent.postMessage(message, "*")
+    } catch (e) {}
+}
+
+function reportProgress(value) {
+    intro.progress = Math.max(intro.progress, value)
+    postToParent({
+        type: "daud3d:progress",
+        value: intro.progress,
+    })
+}
+
+// counts every file the loaders fetch (gltf, bin,
+// textures, HDRI) → 0–90%. The last 10% is GPU warm-up.
+THREE.DefaultLoadingManager.onProgress = (
+    url,
+    loaded,
+    total
+) => {
+    reportProgress(0.9 * (loaded / Math.max(total, 1)))
+}
+
+window.addEventListener("message", (event) => {
+    const data = event.data
+
+    if (
+        !data ||
+        typeof data.type !== "string" ||
+        !data.type.startsWith("daud3d:")
+    ) {
+        return
+    }
+
+    if (data.type === "daud3d:ping") {
+        reportProgress(intro.progress)
+        if (intro.prepared) {
+            postToParent({ type: "daud3d:ready" })
+        }
+        if (intro.done && intro.started) {
+            postToParent({ type: "daud3d:introDone" })
+        }
+    }
+
+    if (data.type === "daud3d:start") {
+        intro.startRequested = true
+        tryStartIntro()
+    }
+})
+
+/* ---------------------------------------------------------
+   Upload every texture to the GPU up front, so nothing
+   heavy happens while the intro is playing
+--------------------------------------------------------- */
+
+function uploadTexturesToGPU(root) {
+    const seen = new Set()
+
+    root.traverse((object) => {
+        if (!object.isMesh) return
+
+        const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material]
+
+        materials.forEach((material) => {
+            if (!material) return
+            for (const key in material) {
+                const value = material[key]
+                if (
+                    value &&
+                    value.isTexture &&
+                    !seen.has(value)
+                ) {
+                    seen.add(value)
+                    renderer.initTexture(value)
+                }
+            }
+        })
+    })
+
+    console.log(`Uploaded ${seen.size} textures to GPU`)
 }
 
 function markReady(what) {
@@ -348,27 +464,63 @@ function markReady(what) {
     if (
         !intro.ready.gltf ||
         !intro.ready.hdri ||
-        intro.started ||
-        intro.done
+        intro.preparing
     ) {
         return
     }
 
-    // compile shaders before starting the clock,
-    // so the first frames don't hitch
-    const begin = () => {
-        intro.started = true
-        intro.startTime = performance.now()
-        console.log("Intro reveal started")
+    intro.preparing = true
+
+    // compile shaders + upload textures + one warm-up
+    // frame, all before telling Framer we're ready
+    const prepared = () => {
+        uploadTexturesToGPU(scene)
+        renderer.render(scene, renderCamera)
+
+        intro.prepared = true
+        reportProgress(1)
+        postToParent({ type: "daud3d:ready" })
+        console.log("3D ready")
+
+        if (waitForStart) {
+            setTimeout(() => {
+                if (!intro.started) {
+                    console.warn(
+                        "No start signal from preloader, playing intro anyway"
+                    )
+                    intro.startRequested = true
+                    tryStartIntro()
+                }
+            }, INTRO.startSignalTimeout * 1000)
+        }
+
+        tryStartIntro()
     }
 
     if (renderer.compileAsync) {
         renderer
             .compileAsync(scene, renderCamera)
-            .then(begin, begin)
+            .then(prepared, prepared)
     } else {
-        begin()
+        prepared()
     }
+}
+
+function tryStartIntro() {
+    if (!intro.prepared || intro.started) return
+    if (waitForStart && !intro.startRequested) return
+
+    intro.started = true
+    postToParent({ type: "daud3d:started" })
+
+    if (intro.done) {
+        // intro skipped (?intro=off or once-per-session)
+        postToParent({ type: "daud3d:introDone" })
+        return
+    }
+
+    intro.startTime = performance.now()
+    console.log("Intro reveal started")
 }
 
 const easeInOutCubic = (t) =>
@@ -524,6 +676,7 @@ function finishIntro() {
         } catch (e) {}
     }
 
+    postToParent({ type: "daud3d:introDone" })
     console.log("Intro reveal finished")
 }
 
@@ -1029,7 +1182,7 @@ function animate() {
 
         if (introDebugT !== null) {
             applyIntro(introDebugT)
-        } else if (intro.started) {
+        } else if (intro.started && !intro.done) {
             const t =
                 (performance.now() -
                     intro.startTime) /
