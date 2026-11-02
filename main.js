@@ -156,10 +156,10 @@ scene.add(ambientLight)
    INTRO REVEAL  (plays once, then hands off to scroll)
    ---------------------------------------------------------
    1. Camera starts wide + orbited, pushes into Camera_Hero
-   2. Mannequin appears as black linework (silhouette +
-      horizontal scan lines)
-   3. A pink block-scan sweeps bottom → top and reveals
-      the real materials
+   2. A glowing pink wire grid climbs the body bottom → top,
+      filled with a soft pink haze
+   3. The real material rises up behind it, with a pink
+      glow along the edge where it "solidifies"
 
    Tuning: change values in INTRO below.
    Debug in the URL:
@@ -171,8 +171,8 @@ const INTRO = {
     duration: 3.4, // seconds, whole intro
 
     // timing windows, as fractions of duration (0 → 1)
-    outlineIn: [0.0, 0.18], // linework fades in
-    scan: [0.15, 0.95], // block scan sweeps up
+    wireScan: [0.0, 0.62], // pink wire grid climbs up
+    solidScan: [0.24, 0.98], // real material follows
 
     // camera start pose, relative to Camera_Hero
     pullBack: 1.9, // distance multiplier
@@ -181,13 +181,16 @@ const INTRO = {
     fovBoost: 6, // extra FOV at start (degrees)
 
     // look
-    lineColor: "#0a0a0a",
-    scanColor: "#ff2e93",
-    blockSize: 4.5, // size of scan blocks (scene units)
-    bandWidth: 16, // height of the pink band
-    jitter: 18, // how ragged the scan front is
-    lineSpacing: 7, // gap between horizontal scan lines
-    lineOpacity: 0.5, // scan line strength (silhouette is always full)
+    wireColor: "#ff2e93", // grid lines
+    fillColor: "#ff9fd2", // haze inside the wireframe
+    fillOpacity: 0.28, // haze strength (0 = lines only)
+    rimGlow: 0.7, // extra glow on the silhouette edges
+    edgeColor: "#ff4fa8", // hot band where material forms
+    gridSize: 3.2, // wire grid cell size (scene units)
+    wireFade: 26, // how softly the wires fade in at the top
+    edgeBand: 3.5, // height of the hot band at the solid edge
+    glowBand: 16, // pink tint on fresh material, fades out
+    edgeNoise: 9, // how wavy the fronts are (0 = flat)
 
     // false = once per page load
     // true  = once per browser tab session (skips on reload)
@@ -240,24 +243,27 @@ function toOutputColor(hex) {
 }
 
 const revealUniforms = {
-    uRevealHeight: { value: -1e6 },
-    uOutline: { value: 0 },
-    uBlock: { value: INTRO.blockSize },
-    uBand: { value: INTRO.bandWidth },
-    uJitter: { value: INTRO.jitter },
-    uLineSpacing: { value: INTRO.lineSpacing },
-    uLineOpacity: { value: INTRO.lineOpacity },
-    uLineColor: {
-        value: toOutputColor(INTRO.lineColor),
-    },
-    uScanColor: {
-        value: toOutputColor(INTRO.scanColor),
-    },
+    uWireHeight: { value: -1e6 }, // world Y of the wire front
+    uSolidHeight: { value: -1e6 }, // world Y of the material front
+    uGrid: { value: INTRO.gridSize },
+    uWireFade: { value: INTRO.wireFade },
+    uEdgeBand: { value: INTRO.edgeBand },
+    uGlowBand: { value: INTRO.glowBand },
+    uEdgeNoise: { value: INTRO.edgeNoise },
+    uFillOpacity: { value: INTRO.fillOpacity },
+    uRimGlow: { value: INTRO.rimGlow },
+    uWireColor: { value: toOutputColor(INTRO.wireColor) },
+    uFillColor: { value: toOutputColor(INTRO.fillColor) },
+    uEdgeColor: { value: toOutputColor(INTRO.edgeColor) },
+}
+
+function setRevealComplete() {
+    revealUniforms.uWireHeight.value = 1e6
+    revealUniforms.uSolidHeight.value = 1e6
 }
 
 if (introSkip) {
-    revealUniforms.uRevealHeight.value = 1e6
-    revealUniforms.uOutline.value = 0
+    setRevealComplete()
 }
 
 function applyRevealShader(material) {
@@ -277,59 +283,91 @@ function applyRevealShader(material) {
 
         shader.fragmentShader =
             `varying vec3 vRevealWorld;
-            uniform float uRevealHeight;
-            uniform float uOutline;
-            uniform float uBlock;
-            uniform float uBand;
-            uniform float uJitter;
-            uniform float uLineSpacing;
-            uniform float uLineOpacity;
-            uniform vec3 uLineColor;
-            uniform vec3 uScanColor;
+            uniform float uWireHeight;
+            uniform float uSolidHeight;
+            uniform float uGrid;
+            uniform float uWireFade;
+            uniform float uEdgeBand;
+            uniform float uGlowBand;
+            uniform float uEdgeNoise;
+            uniform float uFillOpacity;
+            uniform float uRimGlow;
+            uniform vec3 uWireColor;
+            uniform vec3 uFillColor;
+            uniform vec3 uEdgeColor;
 
             float revealHash( vec3 p ) {
                 p = fract( p * 0.3183099 + 0.1 );
                 p *= 17.0;
                 return fract( p.x * p.y * p.z * ( p.x + p.y + p.z ) );
             }
+
+            // smooth value noise, keeps the fronts wavy, not blocky
+            float revealNoise( vec3 p ) {
+                vec3 i = floor( p );
+                vec3 f = fract( p );
+                f = f * f * ( 3.0 - 2.0 * f );
+                return mix(
+                    mix( mix( revealHash( i ), revealHash( i + vec3( 1, 0, 0 ) ), f.x ),
+                         mix( revealHash( i + vec3( 0, 1, 0 ) ), revealHash( i + vec3( 1, 1, 0 ) ), f.x ), f.y ),
+                    mix( mix( revealHash( i + vec3( 0, 0, 1 ) ), revealHash( i + vec3( 1, 0, 1 ) ), f.x ),
+                         mix( revealHash( i + vec3( 0, 1, 1 ) ), revealHash( i + vec3( 1, 1, 1 ) ), f.x ), f.y ),
+                    f.z );
+            }
             ` +
-            shader.fragmentShader.replace(
-                "void main() {",
-                `void main() {
-                vec3 rCell = floor( vRevealWorld / uBlock );
-                float rRand = revealHash( rCell );
-                float rFront = uRevealHeight
-                    - ( rCell.y + 0.5 ) * uBlock
-                    + ( rRand - 0.5 ) * uJitter;
+            shader.fragmentShader
+                .replace(
+                    "void main() {",
+                    `void main() {
+                    float rWave = ( revealNoise( vRevealWorld * 0.06 ) - 0.5 ) * uEdgeNoise;
+                    // > 0 means this point is below the front
+                    float rWire = uWireHeight - vRevealWorld.y + rWave;
+                    float rSolid = uSolidHeight - vRevealWorld.y + rWave * 1.3;
 
-                if ( rFront < 0.0 ) {
-                    // ---- not revealed yet: linework only ----
-                    vec3 rNorm = normalize( vNormal );
-                    float rFacing = abs( dot( rNorm, normalize( vViewPosition ) ) );
-                    float rRim = 1.0 - smoothstep( 0.18, 0.32, rFacing );
+                    if ( rSolid < 0.0 ) {
+                        // ---- not solid yet: pink wireframe + haze ----
+                        float rWireVis = smoothstep( 0.0, uWireFade, rWire );
+                        if ( rWireVis < 0.003 ) discard;
 
-                    float rC = vRevealWorld.y / uLineSpacing;
-                    float rD = abs( fract( rC - 0.5 ) - 0.5 ) / max( fwidth( rC ), 1e-4 );
-                    float rScan = 1.0 - clamp( rD, 0.0, 1.0 );
-                    // scan lines on the near surface only, or they double up
-                    rScan *= gl_FrontFacing ? uLineOpacity : 0.0;
+                        // grid that wraps the surface (triplanar, world space)
+                        vec3 rG = vRevealWorld / uGrid;
+                        vec3 rD = abs( fract( rG - 0.5 ) - 0.5 ) / max( fwidth( rG ), vec3( 1e-4 ) );
+                        vec3 rN = abs( inverseTransformDirection( normalize( vNormal ), viewMatrix ) );
+                        rN = pow( rN, vec3( 4.0 ) );
+                        rN /= ( rN.x + rN.y + rN.z );
+                        float rLine =
+                            ( 1.0 - clamp( min( rD.y, rD.z ) - 0.2, 0.0, 1.0 ) ) * rN.x +
+                            ( 1.0 - clamp( min( rD.x, rD.z ) - 0.2, 0.0, 1.0 ) ) * rN.y +
+                            ( 1.0 - clamp( min( rD.x, rD.y ) - 0.2, 0.0, 1.0 ) ) * rN.z;
 
-                    float rLine = max( rRim, rScan ) * uOutline;
-                    if ( rLine < 0.02 ) discard;
+                        // glow on the silhouette edges, like a hologram
+                        float rFacing = abs( dot( normalize( vNormal ), normalize( vViewPosition ) ) );
+                        float rRim = pow( 1.0 - rFacing, 2.0 ) * uRimGlow;
 
-                    // premultiplied, canvas is transparent
-                    gl_FragColor = vec4( uLineColor * rLine, rLine );
-                    return;
-                }
+                        float rFillA = uFillOpacity + rRim;
+                        vec3 rCol = mix( uFillColor, uWireColor, rLine );
+                        float rA = max( rLine, rFillA );
 
-                if ( rFront < uBand ) {
-                    // ---- the pink scan band ----
-                    float rFlick = 0.82 + 0.36 * rRand;
-                    gl_FragColor = vec4( min( uScanColor * rFlick, vec3( 1.0 ) ), 1.0 );
-                    return;
-                }
-                `
-            )
+                        // hot band right above the material edge
+                        float rHot = 1.0 - smoothstep( 0.0, uEdgeBand, -rSolid );
+                        rCol = mix( rCol, uEdgeColor, rHot );
+                        rA = max( rA, rHot );
+
+                        rA = clamp( rA * rWireVis, 0.0, 1.0 );
+                        // premultiplied, canvas is transparent
+                        gl_FragColor = vec4( rCol * rA, rA );
+                        return;
+                    }
+                    `
+                )
+                .replace(
+                    "#include <dithering_fragment>",
+                    `#include <dithering_fragment>
+                    // fresh material glows pink, then settles
+                    float rGlow = 1.0 - smoothstep( 0.0, uGlowBand, rSolid );
+                    gl_FragColor.rgb = mix( gl_FragColor.rgb, uEdgeColor, rGlow * rGlow * 0.75 );
+                    `
+                )
     }
 
     material.customProgramCacheKey =
@@ -565,24 +603,30 @@ const _localQ = new THREE.Quaternion()
 function applyIntro(t) {
     /* ------------- reveal shader ------------- */
 
-    const outlineT = easeOutCubic(
-        windowT(t, INTRO.outlineIn)
+    const wireT = easeInOutSine(
+        windowT(t, INTRO.wireScan)
     )
 
-    const scanT = easeInOutSine(
-        windowT(t, INTRO.scan)
+    const solidT = easeInOutSine(
+        windowT(t, INTRO.solidScan)
     )
 
-    const pad =
-        INTRO.jitter * 0.5 + INTRO.bandWidth
+    const pad = INTRO.edgeNoise * 1.3 + INTRO.edgeBand
 
-    revealUniforms.uOutline.value = outlineT
-
-    revealUniforms.uRevealHeight.value =
+    // wire front travels further so the grid is fully
+    // faded in at the top before the material catches up
+    revealUniforms.uWireHeight.value =
         THREE.MathUtils.lerp(
             intro.minY - pad,
-            intro.maxY + pad,
-            scanT
+            intro.maxY + pad + INTRO.wireFade,
+            wireT
+        )
+
+    revealUniforms.uSolidHeight.value =
+        THREE.MathUtils.lerp(
+            intro.minY - pad,
+            intro.maxY + pad + INTRO.glowBand,
+            solidT
         )
 
     /* ------------- camera push ------------- */
@@ -663,8 +707,7 @@ function applyIntro(t) {
 
 function finishIntro() {
     intro.done = true
-    revealUniforms.uRevealHeight.value = 1e6
-    revealUniforms.uOutline.value = 0
+    setRevealComplete()
     updateCamera(scrollProgress)
 
     if (INTRO.oncePerSession) {
@@ -1196,7 +1239,6 @@ function animate() {
         } else {
             // still loading: keep everything hidden
             applyIntro(0)
-            revealUniforms.uOutline.value = 0
         }
     }
 
