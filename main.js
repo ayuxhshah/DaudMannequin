@@ -158,8 +158,8 @@ scene.add(ambientLight)
    1. Camera starts wide + orbited, pushes into Camera_Hero
    2. A glowing pink wire grid climbs the body bottom → top,
       filled with a soft pink haze
-   3. The real material rises up behind it, with a pink
-      glow along the edge where it "solidifies"
+   3. A band of pink pixel blocks sweeps up over the
+      wireframe and reveals the real material behind it
 
    Tuning: change values in INTRO below.
    Debug in the URL:
@@ -172,7 +172,7 @@ const INTRO = {
 
     // timing windows, as fractions of duration (0 → 1)
     wireScan: [0.0, 0.62], // pink wire grid climbs up
-    solidScan: [0.24, 0.98], // real material follows
+    solidScan: [0.24, 0.98], // pink pixel blocks + material follow
 
     // camera start pose, relative to Camera_Hero
     pullBack: 1.9, // distance multiplier
@@ -185,12 +185,15 @@ const INTRO = {
     fillColor: "#ff9fd2", // haze inside the wireframe
     fillOpacity: 0.28, // haze strength (0 = lines only)
     rimGlow: 0.7, // extra glow on the silhouette edges
-    edgeColor: "#ff4fa8", // hot band where material forms
     gridSize: 3.2, // wire grid cell size (scene units)
     wireFade: 26, // how softly the wires fade in at the top
-    edgeBand: 3.5, // height of the hot band at the solid edge
-    glowBand: 16, // pink tint on fresh material, fades out
-    edgeNoise: 9, // how wavy the fronts are (0 = flat)
+    edgeNoise: 9, // how wavy the wire front is (0 = flat)
+
+    // pink pixel blocks that reveal the material
+    blockColor: "#ff2e93",
+    blockSize: 4.5, // size of each pixel block (scene units)
+    blockBand: 16, // height of the band of blocks
+    blockJitter: 18, // how ragged the block front is
 
     // false = once per page load
     // true  = once per browser tab session (skips on reload)
@@ -247,14 +250,15 @@ const revealUniforms = {
     uSolidHeight: { value: -1e6 }, // world Y of the material front
     uGrid: { value: INTRO.gridSize },
     uWireFade: { value: INTRO.wireFade },
-    uEdgeBand: { value: INTRO.edgeBand },
-    uGlowBand: { value: INTRO.glowBand },
+    uBlock: { value: INTRO.blockSize },
+    uBand: { value: INTRO.blockBand },
+    uJitter: { value: INTRO.blockJitter },
     uEdgeNoise: { value: INTRO.edgeNoise },
     uFillOpacity: { value: INTRO.fillOpacity },
     uRimGlow: { value: INTRO.rimGlow },
     uWireColor: { value: toOutputColor(INTRO.wireColor) },
     uFillColor: { value: toOutputColor(INTRO.fillColor) },
-    uEdgeColor: { value: toOutputColor(INTRO.edgeColor) },
+    uBlockColor: { value: toOutputColor(INTRO.blockColor) },
 }
 
 function setRevealComplete() {
@@ -287,14 +291,15 @@ function applyRevealShader(material) {
             uniform float uSolidHeight;
             uniform float uGrid;
             uniform float uWireFade;
-            uniform float uEdgeBand;
-            uniform float uGlowBand;
+            uniform float uBlock;
+            uniform float uBand;
+            uniform float uJitter;
             uniform float uEdgeNoise;
             uniform float uFillOpacity;
             uniform float uRimGlow;
             uniform vec3 uWireColor;
             uniform vec3 uFillColor;
-            uniform vec3 uEdgeColor;
+            uniform vec3 uBlockColor;
 
             float revealHash( vec3 p ) {
                 p = fract( p * 0.3183099 + 0.1 );
@@ -322,7 +327,14 @@ function applyRevealShader(material) {
                     float rWave = ( revealNoise( vRevealWorld * 0.06 ) - 0.5 ) * uEdgeNoise;
                     // > 0 means this point is below the front
                     float rWire = uWireHeight - vRevealWorld.y + rWave;
-                    float rSolid = uSolidHeight - vRevealWorld.y + rWave * 1.3;
+
+                    // material front moves in pixel blocks, each block
+                    // with its own random offset for a ragged edge
+                    vec3 rCell = floor( vRevealWorld / uBlock );
+                    float rRand = revealHash( rCell );
+                    float rSolid = uSolidHeight
+                        - ( rCell.y + 0.5 ) * uBlock
+                        + ( rRand - 0.5 ) * uJitter;
 
                     if ( rSolid < 0.0 ) {
                         // ---- not solid yet: pink wireframe + haze ----
@@ -348,24 +360,18 @@ function applyRevealShader(material) {
                         vec3 rCol = mix( uFillColor, uWireColor, rLine );
                         float rA = max( rLine, rFillA );
 
-                        // hot band right above the material edge
-                        float rHot = 1.0 - smoothstep( 0.0, uEdgeBand, -rSolid );
-                        rCol = mix( rCol, uEdgeColor, rHot );
-                        rA = max( rA, rHot );
-
                         rA = clamp( rA * rWireVis, 0.0, 1.0 );
                         // premultiplied, canvas is transparent
                         gl_FragColor = vec4( rCol * rA, rA );
                         return;
                     }
-                    `
-                )
-                .replace(
-                    "#include <dithering_fragment>",
-                    `#include <dithering_fragment>
-                    // fresh material glows pink, then settles
-                    float rGlow = 1.0 - smoothstep( 0.0, uGlowBand, rSolid );
-                    gl_FragColor.rgb = mix( gl_FragColor.rgb, uEdgeColor, rGlow * rGlow * 0.75 );
+
+                    if ( rSolid < uBand ) {
+                        // ---- the pink pixel blocks ----
+                        float rFlick = 0.82 + 0.36 * rRand;
+                        gl_FragColor = vec4( min( uBlockColor * rFlick, vec3( 1.0 ) ), 1.0 );
+                        return;
+                    }
                     `
                 )
     }
@@ -611,7 +617,11 @@ function applyIntro(t) {
         windowT(t, INTRO.solidScan)
     )
 
-    const pad = INTRO.edgeNoise * 1.3 + INTRO.edgeBand
+    const pad =
+        INTRO.edgeNoise +
+        INTRO.blockJitter * 0.5 +
+        INTRO.blockBand +
+        INTRO.blockSize
 
     // wire front travels further so the grid is fully
     // faded in at the top before the material catches up
@@ -625,7 +635,7 @@ function applyIntro(t) {
     revealUniforms.uSolidHeight.value =
         THREE.MathUtils.lerp(
             intro.minY - pad,
-            intro.maxY + pad + INTRO.glowBand,
+            intro.maxY + pad,
             solidT
         )
 
